@@ -5,6 +5,18 @@
   <title>Frontend</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    style-src needs 'unsafe-inline': Angular's esbuild builder injects component-level styles
+    (the `styles: \`...\`` blocks in e.g. login.ts) as inline <style> elements at runtime rather
+    than extracting them into the external stylesheet — there's no static per-request nonce to use
+    instead without server-side rendering. script-src stays strict ('self' only, no unsafe-inline/
+    unsafe-eval) since script execution is the actual dangerous vector.
+    Note: `frame-ancestors` (and `report-uri`/`sandbox`) are silently ignored when a CSP is
+    delivered via <meta> per spec — clickjacking protection for this page needs to come from the
+    real hosting layer (nginx/CDN header, or Spring Boot if it ends up serving these static files)
+    once deployment is decided; it isn't covered by this tag.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://lh3.googleusercontent.com https://avatars.githubusercontent.com; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
