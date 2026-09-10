@@ -1,1 +1,69 @@
-<p>login works!</p>
+<div class="card">
+  <h1>Ryft</h1>
+
+  @if (errorMessage()) {
+    <div class="banner">{{ errorMessage() }}</div>
+  }
+
+  <div class="tabs">
+    <button type="button" [class.active]="mode() === 'login'" (click)="switchMode('login')">Log in</button>
+    <button type="button" [class.active]="mode() === 'register'" (click)="switchMode('register')">
+      Sign up
+    </button>
+  </div>
+
+  @if (mode() === 'login') {
+    <form [formGroup]="loginForm" (ngSubmit)="submitLogin()">
+      <label>
+        Email
+        <input type="email" formControlName="email" autocomplete="email" />
+        @if (loginForm.controls.email.invalid && loginForm.controls.email.touched) {
+          <span class="field-error">Enter a valid email address.</span>
+        }
+      </label>
+      <label>
+        Password
+        <input type="password" formControlName="password" autocomplete="current-password" />
+        @if (loginForm.controls.password.invalid && loginForm.controls.password.touched) {
+          <span class="field-error">Password is required.</span>
+        }
+      </label>
+      <button type="submit" class="submit" [disabled]="submitting()">
+        {{ submitting() ? 'Logging in…' : 'Log in' }}
+      </button>
+    </form>
+  } @else {
+    <form [formGroup]="registerForm" (ngSubmit)="submitRegister()">
+      <label>
+        Display name
+        <input type="text" formControlName="displayName" autocomplete="name" />
+        @if (registerForm.controls.displayName.invalid && registerForm.controls.displayName.touched) {
+          <span class="field-error">Display name is required.</span>
+        }
+      </label>
+      <label>
+        Email
+        <input type="email" formControlName="email" autocomplete="email" />
+        @if (registerForm.controls.email.invalid && registerForm.controls.email.touched) {
+          <span class="field-error">Enter a valid email address.</span>
+        }
+      </label>
+      <label>
+        Password
+        <input type="password" formControlName="password" autocomplete="new-password" />
+        @if (registerForm.controls.password.invalid && registerForm.controls.password.touched) {
+          <span class="field-error">Password must be at least 8 characters.</span>
+        }
+      </label>
+      <button type="submit" class="submit" [disabled]="submitting()">
+        {{ submitting() ? 'Creating account…' : 'Create account' }}
+      </button>
+    </form>
+  }
+
+  <p class="divider">or continue with</p>
+  <div class="oauth">
+    <a href="/oauth2/authorization/google">Sign in with Google</a>
+    <a href="/oauth2/authorization/github">Sign in with GitHub</a>
+  </div>
+</div>
