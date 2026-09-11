@@ -301,12 +301,20 @@ Start Postgres and MongoDB:
 docker-compose up -d
 ```
 
-Run the backend:
+`docker-compose.yml` currently publishes Postgres on host port **5433**
+(not the default 5432) — a local Postgres install already sitting on 5432
+otherwise silently intercepts the connection, which surfaces as a
+confusing `Unable to determine Dialect without JDBC metadata` error from
+Hibernate rather than a connection-refused. Point the backend at the
+matching port:
 
 ```bash
 cd backend
-./mvnw spring-boot:run
+DB_PORT=5433 ./mvnw spring-boot:run
 ```
+
+(Omit `DB_PORT` — or set it back to 5432 in both `docker-compose.yml` and
+here — once nothing else on your machine holds port 5432.)
 
 Run the frontend:
 
