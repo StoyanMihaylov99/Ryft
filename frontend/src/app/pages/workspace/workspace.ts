@@ -1,9 +1,313 @@
-import { Component } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, computed, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AuthService } from '../../core/auth/auth.service';
+import { WorkspaceMember, WorkspaceRole } from '../../core/workspace/models';
+import { WorkspaceService } from '../../core/workspace/workspace.service';
 
 @Component({
-  imports: [],
+  imports: [ReactiveFormsModule],
   selector: 'app-workspace',
-  styles: ``,
+  styles: `
+    :host {
+      display: block;
+      min-height: 100vh;
+      background: #f4f5f7;
+      font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
+    }
+
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+
+    h1 {
+      margin: 0 0 1.5rem;
+      font-size: 1.375rem;
+      color: #172b4d;
+    }
+
+    .card {
+      padding: 1.5rem;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+      margin-bottom: 1.5rem;
+    }
+
+    h2 {
+      margin: 0 0 1rem;
+      font-size: 1.0625rem;
+      color: #172b4d;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      text-align: left;
+      padding: 0.5rem 0.375rem;
+      border-bottom: 1px solid #f0f1f3;
+      font-size: 0.9375rem;
+    }
+
+    th {
+      color: #6b778c;
+      font-weight: 500;
+      font-size: 0.8125rem;
+      text-transform: uppercase;
+    }
+
+    select {
+      padding: 0.375rem 0.5rem;
+      border: 1px solid #dcdfe4;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    form.invite {
+      display: flex;
+      gap: 0.625rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      font-size: 0.875rem;
+      color: #42526e;
+    }
+
+    input {
+      padding: 0.5rem 0.625rem;
+      border: 1px solid #dcdfe4;
+      border-radius: 4px;
+      font-size: 0.9375rem;
+    }
+
+    .submit {
+      padding: 0.5625rem 0.875rem;
+      border: none;
+      border-radius: 4px;
+      background: #0052cc;
+      color: #fff;
+      font-size: 0.9375rem;
+      cursor: pointer;
+    }
+
+    .submit:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .field-error {
+      color: #de350b;
+      font-size: 0.8125rem;
+    }
+
+    .banner {
+      padding: 0.625rem 0.75rem;
+      border-radius: 4px;
+      background: #ffebe6;
+      color: #bf2600;
+      font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+
+    .empty-state {
+      color: #6b778c;
+      font-size: 0.9375rem;
+    }
+
+    .welcome-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 30, 66, 0.54);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      z-index: 10;
+    }
+
+    .welcome-card {
+      width: 100%;
+      max-width: 420px;
+      padding: 2rem;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(9, 30, 66, 0.25);
+    }
+
+    .welcome-card h1 {
+      margin: 0 0 0.375rem;
+    }
+
+    .welcome-card .subtitle {
+      margin: 0 0 1.5rem;
+      color: #6b778c;
+      font-size: 0.9375rem;
+    }
+
+    .welcome-card form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.875rem;
+    }
+  `,
   templateUrl: './workspace.html',
 })
-export class Workspace {}
+export class Workspace {
+  private readonly formBuilder = inject(FormBuilder);
+  private readonly workspaceService = inject(WorkspaceService);
+  private readonly authService = inject(AuthService);
+
+  readonly members = signal<WorkspaceMember[]>([]);
+  readonly loading = signal(true);
+  readonly notAMember = signal(false);
+  readonly setupRequired = signal(false);
+  readonly errorMessage = signal<string | null>(null);
+  readonly inviting = signal(false);
+  readonly settingUp = signal(false);
+  private slugManuallyEdited = false;
+
+  readonly myRole = computed<WorkspaceRole | null>(() => {
+    const currentUser = this.authService.currentUser();
+    if (!currentUser) {
+      return null;
+    }
+    return this.members().find((member) => member.userId === currentUser.id)?.role ?? null;
+  });
+
+  readonly canInvite = computed(() => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN');
+  readonly canChangeRoles = computed(() => this.myRole() === 'OWNER');
+
+  readonly inviteForm = this.formBuilder.nonNullable.group({
+    email: ['', [Validators.required, Validators.email]],
+    role: ['MEMBER' as WorkspaceRole, [Validators.required]],
+  });
+
+  readonly setupForm = this.formBuilder.nonNullable.group({
+    name: ['', [Validators.required, Validators.maxLength(100)]],
+    slug: ['', [Validators.required, Validators.pattern(/^[a-z0-9]+(-[a-z0-9]+)*$/)]],
+  });
+
+  constructor() {
+    this.loadMembers();
+    this.setupForm.controls.name.valueChanges.subscribe((name) => {
+      if (!this.slugManuallyEdited) {
+        this.setupForm.controls.slug.setValue(this.slugify(name), { emitEvent: false });
+      }
+    });
+    this.setupForm.controls.slug.valueChanges.subscribe(() => {
+      this.slugManuallyEdited = true;
+    });
+  }
+
+  loadMembers(): void {
+    this.loading.set(true);
+    this.notAMember.set(false);
+    this.setupRequired.set(false);
+    this.errorMessage.set(null);
+    this.workspaceService.listMembers().subscribe({
+      next: (members) => {
+        this.members.set(members);
+        this.loading.set(false);
+      },
+      error: (error: HttpErrorResponse) => {
+        this.loading.set(false);
+        if (error.status === 404) {
+          this.setupRequired.set(true);
+        } else if (error.status === 403) {
+          this.notAMember.set(true);
+        } else {
+          this.errorMessage.set('Failed to load workspace members.');
+        }
+      },
+    });
+  }
+
+  submitSetup(): void {
+    if (this.setupForm.invalid) {
+      this.setupForm.markAllAsTouched();
+      return;
+    }
+    this.settingUp.set(true);
+    this.errorMessage.set(null);
+    const { name, slug } = this.setupForm.getRawValue();
+    this.workspaceService.completeSetup(name, slug).subscribe({
+      next: () => {
+        this.settingUp.set(false);
+        this.setupRequired.set(false);
+        this.loadMembers();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.settingUp.set(false);
+        this.errorMessage.set(
+          error.status === 409
+            ? 'This workspace has already been set up.'
+            : 'Failed to set up the workspace. Please try again.',
+        );
+      },
+    });
+  }
+
+  private slugify(value: string): string {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  submitInvite(): void {
+    if (this.inviteForm.invalid) {
+      this.inviteForm.markAllAsTouched();
+      return;
+    }
+    this.inviting.set(true);
+    this.errorMessage.set(null);
+    const { email, role } = this.inviteForm.getRawValue();
+    this.workspaceService.invite(email, role).subscribe({
+      next: () => {
+        this.inviting.set(false);
+        this.inviteForm.reset({ email: '', role: 'MEMBER' });
+        this.loadMembers();
+      },
+      error: (error: HttpErrorResponse) => {
+        this.inviting.set(false);
+        this.errorMessage.set(this.describeInviteError(error));
+      },
+    });
+  }
+
+  changeRole(userId: string, role: WorkspaceRole): void {
+    this.errorMessage.set(null);
+    this.workspaceService.changeRole(userId, role).subscribe({
+      next: () => this.loadMembers(),
+      error: () => this.errorMessage.set('Failed to change that member’s role.'),
+    });
+  }
+
+  private describeInviteError(error: HttpErrorResponse): string {
+    switch (error.status) {
+      case 404:
+        return 'No registered user with that email.';
+      case 409:
+        return 'That user is already a member of this workspace.';
+      case 403:
+        return 'You do not have permission to invite members.';
+      default:
+        return 'Failed to send the invite. Please try again.';
+    }
+  }
+}

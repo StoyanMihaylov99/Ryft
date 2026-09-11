@@ -1,1 +1,109 @@
-<p>workspace works!</p>
+<div class="page">
+  <h1>Ryft workspace</h1>
+
+  @if (setupRequired()) {
+    <div class="welcome-overlay">
+      <div class="welcome-card">
+        <h1>Welcome to Ryft</h1>
+        <p class="subtitle">You're the first one here — let's name your workspace to get started.</p>
+
+        @if (errorMessage()) {
+          <div class="banner">{{ errorMessage() }}</div>
+        }
+
+        <form [formGroup]="setupForm" (ngSubmit)="submitSetup()">
+          <label>
+            Workspace name
+            <input type="text" formControlName="name" autocomplete="off" placeholder="Acme Inc" />
+            @if (setupForm.controls.name.invalid && setupForm.controls.name.touched) {
+              <span class="field-error">Workspace name is required.</span>
+            }
+          </label>
+          <label>
+            Workspace URL slug
+            <input type="text" formControlName="slug" autocomplete="off" placeholder="acme-inc" />
+            @if (setupForm.controls.slug.invalid && setupForm.controls.slug.touched) {
+              <span class="field-error">Lowercase letters, digits and hyphens only.</span>
+            }
+          </label>
+          <button type="submit" class="submit" [disabled]="settingUp()">
+            {{ settingUp() ? 'Creating workspace…' : 'Create workspace' }}
+          </button>
+        </form>
+      </div>
+    </div>
+  } @else if (errorMessage()) {
+    <div class="banner">{{ errorMessage() }}</div>
+  }
+
+  @if (loading()) {
+    <p class="empty-state">Loading members…</p>
+  } @else if (!setupRequired()) {
+    @if (notAMember()) {
+      <div class="card">
+        <p class="empty-state">
+          You haven't been added to a workspace yet. Ask an Owner or Admin to invite you by email.
+        </p>
+      </div>
+    } @else {
+      <div class="card">
+        <h2>Members</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (member of members(); track member.userId) {
+              <tr>
+                <td>{{ member.displayName }}</td>
+                <td>{{ member.email }}</td>
+                <td>
+                  @if (canChangeRoles() && member.role !== 'OWNER') {
+                    <select
+                      [value]="member.role"
+                      (change)="changeRole(member.userId, $any($event.target).value)"
+                    >
+                      <option value="ADMIN">Admin</option>
+                      <option value="MEMBER">Member</option>
+                    </select>
+                  } @else {
+                    {{ member.role }}
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (canInvite()) {
+        <div class="card">
+          <h2>Invite a member</h2>
+          <form class="invite" [formGroup]="inviteForm" (ngSubmit)="submitInvite()">
+            <label>
+              Email
+              <input type="email" formControlName="email" autocomplete="email" />
+              @if (inviteForm.controls.email.invalid && inviteForm.controls.email.touched) {
+                <span class="field-error">Enter a valid email address.</span>
+              }
+            </label>
+            <label>
+              Role
+              <select formControlName="role">
+                <option value="MEMBER">Member</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </label>
+            <button type="submit" class="submit" [disabled]="inviting()">
+              {{ inviting() ? 'Inviting…' : 'Invite' }}
+            </button>
+          </form>
+        </div>
+      }
+    }
+  }
+</div>
