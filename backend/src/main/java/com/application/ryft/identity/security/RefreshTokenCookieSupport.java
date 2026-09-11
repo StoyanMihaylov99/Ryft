@@ -1,6 +1,6 @@
 package com.application.ryft.identity.security;
 
-import com.application.ryft.identity.config.RefreshTokenProperties;
+import com.application.ryft.identity.security.config.RefreshTokenProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Duration;
 import java.time.Instant;
@@ -8,9 +8,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 
-/**sh token, used by
- * Shared Set-Cookie helper for the refre both {@link
- * com.application.ryft.identity.controller.AuthController} and {@link OAuth2LoginSuccessHandler}.
+/**
+ * Shared Set-Cookie helper for the refresh token, used by both {@link
+ * com.application.ryft.identity.auth.controller.AuthController} and {@link OAuth2LoginSuccessHandler}.
  * Clearing MUST reuse the exact same path/sameSite attributes the cookie was set with, or the
  * browser treats it as a different cookie and never actually deletes the original.
  */

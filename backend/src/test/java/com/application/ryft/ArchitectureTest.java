@@ -29,7 +29,10 @@ class ArchitectureTest {
             noClasses()
                     .that().resideOutsideOfPackage(modulePackage + "..")
                     .should().dependOnClassesThat()
-                    .resideInAPackage(modulePackage + ".repository..")
+                    // ".." matches zero-or-more path segments, so this covers both a flat
+                    // "<module>.repository" package and one nested under a concept sub-package
+                    // (e.g. "identity.workspace.repository").
+                    .resideInAPackage(modulePackage + "..repository..")
                     .because("other modules may only reach the '" + module
                             + "' module through its public *Service interface, "
                             + "never its repository (or the JPA entities behind it) directly")

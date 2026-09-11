@@ -10,15 +10,8 @@ import { AuthService } from '../../core/auth/auth.service';
 @Component({
   imports: [],
   selector: 'app-oauth2-callback',
-  styles: `
-    :host {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-    }
-  `,
   templateUrl: './oauth2-callback.html',
+  styleUrl: './oauth2-callback.css',
 })
 export class Oauth2Callback implements OnInit {
   private readonly authService = inject(AuthService);

@@ -1,6 +1,6 @@
 package com.application.ryft.identity.security;
 
-import com.application.ryft.identity.config.OAuth2RedirectProperties;
+import com.application.ryft.identity.security.config.OAuth2RedirectProperties;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.URLEncoder;
