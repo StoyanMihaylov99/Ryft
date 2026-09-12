@@ -4,6 +4,7 @@ import com.application.ryft.identity.user.dto.UserDTO;
 import com.application.ryft.identity.user.repository.UserRepository;
 import com.application.ryft.identity.user.entity.User;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,11 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new NoSuchElementException("User not found: " + userId));
         return toDTO(user);
+    }
+
+    @Override
+    public Optional<UserDTO> findByEmail(String email) {
+        return userRepository.findByEmailIgnoreCase(email).map(UserServiceImpl::toDTO);
     }
 
     public static UserDTO toDTO(User user) {
