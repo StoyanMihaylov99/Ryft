@@ -23,6 +23,7 @@ import com.application.ryft.identity.workspace.entity.WorkspaceRole;
 import java.util.List;
 import java.util.Locale;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +56,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         WorkspaceMember owner = new WorkspaceMember(workspace, caller, WorkspaceRole.OWNER);
         workspaceMemberRepository.save(owner);
         return toDTO(owner);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UUID> getCurrentWorkspaceId() {
+        return workspaceRepository.findFirstByOrderByCreatedAtAsc().map(Workspace::getId);
     }
 
     @Override

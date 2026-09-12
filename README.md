@@ -88,7 +88,7 @@ default.
 Two-token model: a short-lived JWT **access token** proves identity on
 every API call, and a long-lived, server-tracked **refresh token** is the
 only thing that can mint a new access token. They're issued together by
-`identity.service.AuthService` and `identity.service.TokenService`, on
+`identity.auth.service.AuthService` and `identity.auth.service.TokenService`, on
 register, login, refresh, and OAuth2 login alike.
 
 ### Password storage
