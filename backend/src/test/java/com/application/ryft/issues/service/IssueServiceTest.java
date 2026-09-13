@@ -3,7 +3,6 @@ package com.application.ryft.issues.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,13 +18,9 @@ import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
-import com.application.ryft.issues.exception.ProjectNotFoundException;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
-import com.application.ryft.projects.dto.ProjectMemberResponse;
-import com.application.ryft.projects.entity.ProjectRole;
-import com.application.ryft.projects.service.ProjectService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -47,7 +42,7 @@ class IssueServiceTest {
     private IssueKeySequenceRepository issueKeySequenceRepository;
 
     @Mock
-    private ProjectService projectService;
+    private ProjectAccess projectAccess;
 
     private IssueServiceImpl issueService;
 
@@ -58,12 +53,12 @@ class IssueServiceTest {
 
     @BeforeEach
     void setUp() {
-        issueService = new IssueServiceImpl(issueRepository, issueKeySequenceRepository, projectService);
+        issueService = new IssueServiceImpl(issueRepository, issueKeySequenceRepository, projectAccess);
     }
 
     @Test
     void createGeneratesKeyAndDefaultsPriorityAndStatus() {
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
         when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -79,7 +74,7 @@ class IssueServiceTest {
 
     @Test
     void createUsesSecondSequenceNumberWhenSequenceExists() {
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         IssueKeySequence existing = new IssueKeySequence(projectId);
         existing.incrementAndGet();
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.of(existing));
@@ -94,20 +89,19 @@ class IssueServiceTest {
     }
 
     @Test
-    void createTranslatesProjectNotFound() {
-        when(projectService.get(callerId, "TRK"))
-                .thenThrow(new com.application.ryft.projects.exception.ProjectNotFoundException("TRK"));
+    void createPropagatesProjectNotFound() {
+        when(projectAccess.requireMembership(callerId, "TRK"))
+                .thenThrow(new com.application.ryft.issues.exception.ProjectNotFoundException("TRK"));
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
-                .isInstanceOf(ProjectNotFoundException.class);
+                .isInstanceOf(com.application.ryft.issues.exception.ProjectNotFoundException.class);
         verify(issueRepository, never()).save(any());
     }
 
     @Test
-    void createTranslatesNotAProjectMember() {
-        when(projectService.get(callerId, "TRK"))
-                .thenThrow(new com.application.ryft.projects.exception.NotAProjectMemberException());
+    void createPropagatesNotAProjectMember() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
@@ -116,9 +110,9 @@ class IssueServiceTest {
 
     @Test
     void createRejectsAssigneeNotAProjectMember() {
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         UUID outsiderId = UUID.randomUUID();
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(List.of());
+        when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.TASK, "Title", null, null, outsiderId)))
@@ -128,10 +122,9 @@ class IssueServiceTest {
 
     @Test
     void createAcceptsAssigneeThatIsAProjectMember() {
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         UUID assigneeId = UUID.randomUUID();
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(
-                List.of(new ProjectMemberResponse(assigneeId, "a@example.com", "A", null, ProjectRole.MEMBER, Instant.now())));
+        when(projectAccess.isMember(callerId, "TRK", assigneeId)).thenReturn(true);
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
         when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -154,8 +147,7 @@ class IssueServiceTest {
     void getRequiresCallerToBeAProjectMember() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK"))
-                .thenThrow(new com.application.ryft.projects.exception.NotAProjectMemberException());
+        when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
         assertThatThrownBy(() -> issueService.get(callerId, "TRK-1"))
                 .isInstanceOf(NotAProjectMemberException.class);
@@ -166,7 +158,7 @@ class IssueServiceTest {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Original", "orig desc", IssuePriority.LOW, null,
                 callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
                 new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null, null));
@@ -180,7 +172,7 @@ class IssueServiceTest {
     void updateToDoneSetsResolvedAt() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
                 new UpdateIssueRequest(null, null, null, null, IssueStatus.DONE));
@@ -195,7 +187,7 @@ class IssueServiceTest {
         issue.setStatus(IssueStatus.DONE);
         issue.setResolvedAt(Instant.now());
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
                 new UpdateIssueRequest(null, null, null, null, IssueStatus.IN_PROGRESS));
@@ -207,9 +199,9 @@ class IssueServiceTest {
     void updateRejectsAssigneeNotAProjectMember() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         UUID outsiderId = UUID.randomUUID();
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(List.of());
+        when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
                 new UpdateIssueRequest(null, null, null, outsiderId, null)))
@@ -220,7 +212,7 @@ class IssueServiceTest {
     void deleteRemovesTheIssue() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
 
         issueService.delete(callerId, "TRK-1");
 
@@ -231,7 +223,7 @@ class IssueServiceTest {
 
     @Test
     void listForProjectReturnsProjectsIssues() {
-        when(projectService.get(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId)).thenReturn(List.of(issue));
 

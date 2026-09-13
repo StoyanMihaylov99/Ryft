@@ -9,12 +9,9 @@ import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
-import com.application.ryft.issues.exception.NotAProjectMemberException;
-import com.application.ryft.issues.exception.ProjectNotFoundException;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
-import com.application.ryft.projects.service.ProjectService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
@@ -27,19 +24,19 @@ public class IssueServiceImpl implements IssueService {
 
     private final IssueRepository issueRepository;
     private final IssueKeySequenceRepository issueKeySequenceRepository;
-    private final ProjectService projectService;
+    private final ProjectAccess projectAccess;
 
     public IssueServiceImpl(IssueRepository issueRepository, IssueKeySequenceRepository issueKeySequenceRepository,
-            ProjectService projectService) {
+            ProjectAccess projectAccess) {
         this.issueRepository = issueRepository;
         this.issueKeySequenceRepository = issueKeySequenceRepository;
-        this.projectService = projectService;
+        this.projectAccess = projectAccess;
     }
 
     @Override
     @Transactional
     public IssueResponse create(UUID callerId, String projectKey, CreateIssueRequest request) {
-        ProjectResponse project = requireProjectMembership(callerId, projectKey);
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         if (request.assigneeId() != null) {
             requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
         }
@@ -56,7 +53,7 @@ public class IssueServiceImpl implements IssueService {
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProject(UUID callerId, String projectKey) {
-        ProjectResponse project = requireProjectMembership(callerId, projectKey);
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         return issueRepository.findAllByProjectIdOrderByCreatedAtAsc(project.id()).stream()
                 .map(this::toResponse)
                 .toList();
@@ -66,7 +63,7 @@ public class IssueServiceImpl implements IssueService {
     @Transactional(readOnly = true)
     public IssueResponse get(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
-        requireProjectMembership(callerId, projectKeyOf(issue));
+        projectAccess.requireMembership(callerId, projectKeyOf(issue));
         return toResponse(issue);
     }
 
@@ -75,7 +72,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse update(UUID callerId, String issueKey, UpdateIssueRequest request) {
         Issue issue = requireIssue(issueKey);
         String projectKey = projectKeyOf(issue);
-        requireProjectMembership(callerId, projectKey);
+        projectAccess.requireMembership(callerId, projectKey);
 
         applyUpdate(issue, callerId, projectKey, request);
         return toResponse(issue);
@@ -125,7 +122,7 @@ public class IssueServiceImpl implements IssueService {
     @Transactional
     public void delete(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
-        requireProjectMembership(callerId, projectKeyOf(issue));
+        projectAccess.requireMembership(callerId, projectKeyOf(issue));
         issueRepository.delete(issue);
     }
 
@@ -147,20 +144,8 @@ public class IssueServiceImpl implements IssueService {
         return issue.getKey().substring(0, issue.getKey().lastIndexOf('-'));
     }
 
-    private ProjectResponse requireProjectMembership(UUID callerId, String projectKey) {
-        try {
-            return projectService.get(callerId, projectKey);
-        } catch (com.application.ryft.projects.exception.ProjectNotFoundException e) {
-            throw new ProjectNotFoundException(projectKey);
-        } catch (com.application.ryft.projects.exception.NotAProjectMemberException e) {
-            throw new NotAProjectMemberException();
-        }
-    }
-
     private void requireAssigneeIsProjectMember(UUID callerId, String projectKey, UUID assigneeId) {
-        boolean isMember = projectService.listMembers(callerId, projectKey).stream()
-                .anyMatch(member -> member.userId().equals(assigneeId));
-        if (!isMember) {
+        if (!projectAccess.isMember(callerId, projectKey, assigneeId)) {
             throw new AssigneeNotAProjectMemberException();
         }
     }
