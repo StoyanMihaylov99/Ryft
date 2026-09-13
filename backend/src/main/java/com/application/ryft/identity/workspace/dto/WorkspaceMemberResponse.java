@@ -4,7 +4,7 @@ import com.application.ryft.identity.workspace.entity.WorkspaceRole;
 import java.time.Instant;
 import java.util.UUID;
 
-public record WorkspaceMemberDTO(
+public record WorkspaceMemberResponse(
         UUID userId,
         String email,
         String displayName,

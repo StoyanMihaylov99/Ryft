@@ -3,7 +3,7 @@ package com.application.ryft.identity.workspace.service;
 import com.application.ryft.identity.workspace.dto.ChangeRoleRequest;
 import com.application.ryft.identity.workspace.dto.CreateWorkspaceRequest;
 import com.application.ryft.identity.workspace.dto.InviteRequest;
-import com.application.ryft.identity.workspace.dto.WorkspaceMemberDTO;
+import com.application.ryft.identity.workspace.dto.WorkspaceMemberResponse;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,13 +15,13 @@ public interface WorkspaceService {
      * workspace exists yet — whichever authenticated user calls this first "wins" and becomes Owner;
      * every call after that fails with {@link com.application.ryft.identity.workspace.exception.WorkspaceAlreadySetUpException}.
      */
-    WorkspaceMemberDTO completeSetup(UUID callerId, CreateWorkspaceRequest request);
+    WorkspaceMemberResponse completeSetup(UUID callerId, CreateWorkspaceRequest request);
 
     Optional<UUID> getCurrentWorkspaceId();
 
-    List<WorkspaceMemberDTO> listMembers(UUID callerId);
+    List<WorkspaceMemberResponse> listMembers(UUID callerId);
 
-    WorkspaceMemberDTO invite(UUID callerId, InviteRequest request);
+    WorkspaceMemberResponse invite(UUID callerId, InviteRequest request);
 
-    WorkspaceMemberDTO changeRole(UUID callerId, UUID targetUserId, ChangeRoleRequest request);
+    WorkspaceMemberResponse changeRole(UUID callerId, UUID targetUserId, ChangeRoleRequest request);
 }

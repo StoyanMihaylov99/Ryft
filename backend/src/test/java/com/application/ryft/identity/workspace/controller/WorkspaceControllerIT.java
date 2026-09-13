@@ -11,7 +11,7 @@ import com.application.ryft.identity.workspace.dto.ChangeRoleRequest;
 import com.application.ryft.identity.workspace.dto.CreateWorkspaceRequest;
 import com.application.ryft.identity.workspace.dto.InviteRequest;
 import com.application.ryft.identity.auth.dto.RegisterRequest;
-import com.application.ryft.identity.workspace.dto.WorkspaceMemberDTO;
+import com.application.ryft.identity.workspace.dto.WorkspaceMemberResponse;
 import com.application.ryft.identity.user.repository.UserRepository;
 import com.application.ryft.identity.workspace.repository.WorkspaceMemberRepository;
 import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
@@ -114,8 +114,8 @@ class WorkspaceControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        WorkspaceMemberDTO member = objectMapper.readValue(
-                result.getResponse().getContentAsString(), WorkspaceMemberDTO.class);
+        WorkspaceMemberResponse member = objectMapper.readValue(
+                result.getResponse().getContentAsString(), WorkspaceMemberResponse.class);
         assertThat(member.role()).isEqualTo(WorkspaceRole.OWNER);
         assertThat(member.email()).isEqualTo(email);
         assertThat(theWorkspace().getName()).isEqualTo("Acme Inc");
@@ -157,8 +157,8 @@ class WorkspaceControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        List<WorkspaceMemberDTO> members = List.of(
-                objectMapper.readValue(result.getResponse().getContentAsString(), WorkspaceMemberDTO[].class));
+        List<WorkspaceMemberResponse> members = List.of(
+                objectMapper.readValue(result.getResponse().getContentAsString(), WorkspaceMemberResponse[].class));
         assertThat(members).anySatisfy(member -> {
             assertThat(member.email()).isEqualTo(ownerEmail);
             assertThat(member.role()).isEqualTo(WorkspaceRole.OWNER);
