@@ -3,7 +3,7 @@ package com.application.ryft.identity.workspace.service;
 import com.application.ryft.identity.workspace.dto.ChangeRoleRequest;
 import com.application.ryft.identity.workspace.dto.CreateWorkspaceRequest;
 import com.application.ryft.identity.workspace.dto.InviteRequest;
-import com.application.ryft.identity.workspace.dto.WorkspaceMemberDTO;
+import com.application.ryft.identity.workspace.dto.WorkspaceMemberResponse;
 import com.application.ryft.identity.workspace.exception.AlreadyWorkspaceMemberException;
 import com.application.ryft.identity.workspace.exception.CannotAssignOwnerRoleException;
 import com.application.ryft.identity.workspace.exception.CannotModifySelfRoleException;
@@ -44,7 +44,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
     @Override
     @Transactional
-    public WorkspaceMemberDTO completeSetup(UUID callerId, CreateWorkspaceRequest request) {
+    public WorkspaceMemberResponse completeSetup(UUID callerId, CreateWorkspaceRequest request) {
         if (workspaceRepository.count() > 0) {
             throw new WorkspaceAlreadySetUpException();
         }
@@ -55,7 +55,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
                 new Workspace(request.name().trim(), normalizeSlug(request.slug())));
         WorkspaceMember owner = new WorkspaceMember(workspace, caller, WorkspaceRole.OWNER);
         workspaceMemberRepository.save(owner);
-        return toDTO(owner);
+        return toResponse(owner);
     }
 
     @Override
@@ -66,17 +66,17 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<WorkspaceMemberDTO> listMembers(UUID callerId) {
+    public List<WorkspaceMemberResponse> listMembers(UUID callerId) {
         Workspace workspace = requireWorkspace();
         requireMembership(workspace, callerId);
         return workspaceMemberRepository.findAllByWorkspaceIdOrderByJoinedAtAsc(workspace.getId()).stream()
-                .map(this::toDTO)
+                .map(this::toResponse)
                 .toList();
     }
 
     @Override
     @Transactional
-    public WorkspaceMemberDTO invite(UUID callerId, InviteRequest request) {
+    public WorkspaceMemberResponse invite(UUID callerId, InviteRequest request) {
         Workspace workspace = requireWorkspace();
         WorkspaceMember caller = requireMembership(workspace, callerId);
         requireOwnerOrAdmin(caller);
@@ -93,12 +93,12 @@ public class WorkspaceServiceImpl implements WorkspaceService {
 
         WorkspaceMember member = new WorkspaceMember(workspace, target, request.role());
         workspaceMemberRepository.save(member);
-        return toDTO(member);
+        return toResponse(member);
     }
 
     @Override
     @Transactional
-    public WorkspaceMemberDTO changeRole(UUID callerId, UUID targetUserId, ChangeRoleRequest request) {
+    public WorkspaceMemberResponse changeRole(UUID callerId, UUID targetUserId, ChangeRoleRequest request) {
         Workspace workspace = requireWorkspace();
         WorkspaceMember caller = requireMembership(workspace, callerId);
         if (caller.getRole() != WorkspaceRole.OWNER) {
@@ -114,7 +114,7 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         WorkspaceMember target = workspaceMemberRepository.findByWorkspaceIdAndUserId(workspace.getId(), targetUserId)
                 .orElseThrow(WorkspaceMemberNotFoundException::new);
         target.setRole(request.role());
-        return toDTO(target);
+        return toResponse(target);
     }
 
     private Workspace requireWorkspace() {
@@ -133,9 +133,9 @@ public class WorkspaceServiceImpl implements WorkspaceService {
         }
     }
 
-    private WorkspaceMemberDTO toDTO(WorkspaceMember member) {
+    private WorkspaceMemberResponse toResponse(WorkspaceMember member) {
         User user = member.getUser();
-        return new WorkspaceMemberDTO(
+        return new WorkspaceMemberResponse(
                 user.getId(), user.getEmail(), user.getDisplayName(), user.getAvatarUrl(),
                 member.getRole(), member.getJoinedAt());
     }

@@ -4,7 +4,7 @@ import com.application.ryft.projects.entity.ProjectRole;
 import java.time.Instant;
 import java.util.UUID;
 
-public record ProjectMemberDTO(
+public record ProjectMemberResponse(
         UUID userId,
         String email,
         String displayName,

@@ -16,7 +16,7 @@ import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.projects.dto.AddProjectMemberRequest;
 import com.application.ryft.projects.dto.ChangeProjectMemberRoleRequest;
 import com.application.ryft.projects.dto.CreateProjectRequest;
-import com.application.ryft.projects.dto.ProjectDTO;
+import com.application.ryft.projects.dto.ProjectResponse;
 import com.application.ryft.projects.dto.UpdateProjectRequest;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
@@ -111,7 +111,7 @@ class ProjectControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        ProjectDTO project = objectMapper.readValue(result.getResponse().getContentAsString(), ProjectDTO.class);
+        ProjectResponse project = objectMapper.readValue(result.getResponse().getContentAsString(), ProjectResponse.class);
         assertThat(project.key()).isEqualTo(key);
         assertThat(projectMemberRepository.findByProjectIdAndUserId(project.id(), userOf(email).getId()))
                 .isPresent()
@@ -145,8 +145,8 @@ class ProjectControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        List<ProjectDTO> projects = List.of(
-                objectMapper.readValue(result.getResponse().getContentAsString(), ProjectDTO[].class));
+        List<ProjectResponse> projects = List.of(
+                objectMapper.readValue(result.getResponse().getContentAsString(), ProjectResponse[].class));
         assertThat(projects).anySatisfy(p -> assertThat(p.key()).isEqualTo(key));
     }
 

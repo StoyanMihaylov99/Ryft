@@ -69,7 +69,7 @@ public class AuthService {
     public AuthResult refresh(String rawRefreshToken) {
         RefreshTokenRotationResult rotation = tokenService.rotateRefreshToken(rawRefreshToken);
         IssuedAccessToken accessToken = tokenService.issueAccessToken(rotation.user());
-        return new AuthResult(accessToken, rotation.refreshToken(), UserServiceImpl.toDTO(rotation.user()));
+        return new AuthResult(accessToken, rotation.refreshToken(), UserServiceImpl.toResponse(rotation.user()));
     }
 
     @Transactional
@@ -139,7 +139,7 @@ public class AuthService {
     private AuthResult issueTokens(User user) {
         IssuedAccessToken accessToken = tokenService.issueAccessToken(user);
         IssuedRefreshToken refreshToken = tokenService.issueRefreshToken(user);
-        return new AuthResult(accessToken, refreshToken, UserServiceImpl.toDTO(user));
+        return new AuthResult(accessToken, refreshToken, UserServiceImpl.toResponse(user));
     }
 
     private String normalizeEmail(String email) {

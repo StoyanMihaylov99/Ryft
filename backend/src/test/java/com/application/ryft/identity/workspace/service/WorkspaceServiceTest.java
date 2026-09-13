@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 import com.application.ryft.identity.workspace.dto.ChangeRoleRequest;
 import com.application.ryft.identity.workspace.dto.CreateWorkspaceRequest;
 import com.application.ryft.identity.workspace.dto.InviteRequest;
-import com.application.ryft.identity.workspace.dto.WorkspaceMemberDTO;
+import com.application.ryft.identity.workspace.dto.WorkspaceMemberResponse;
 import com.application.ryft.identity.workspace.exception.AlreadyWorkspaceMemberException;
 import com.application.ryft.identity.workspace.exception.CannotAssignOwnerRoleException;
 import com.application.ryft.identity.workspace.exception.CannotModifySelfRoleException;
@@ -72,7 +72,7 @@ class WorkspaceServiceTest {
         when(workspaceRepository.save(any(Workspace.class))).thenAnswer(inv -> inv.getArgument(0));
         when(workspaceMemberRepository.save(any(WorkspaceMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        WorkspaceMemberDTO result = workspaceService.completeSetup(callerId,
+        WorkspaceMemberResponse result = workspaceService.completeSetup(callerId,
                 new CreateWorkspaceRequest("Acme Inc", "acme"));
 
         assertThat(result.role()).isEqualTo(WorkspaceRole.OWNER);
@@ -118,7 +118,7 @@ class WorkspaceServiceTest {
         when(workspaceMemberRepository.findByWorkspaceIdAndUserId(any(), eq(callerId))).thenReturn(Optional.of(caller));
         when(workspaceMemberRepository.findAllByWorkspaceIdOrderByJoinedAtAsc(any())).thenReturn(List.of(caller));
 
-        List<WorkspaceMemberDTO> members = workspaceService.listMembers(callerId);
+        List<WorkspaceMemberResponse> members = workspaceService.listMembers(callerId);
 
         assertThat(members).hasSize(1);
         assertThat(members.get(0).email()).isEqualTo("caller@example.com");
@@ -137,7 +137,7 @@ class WorkspaceServiceTest {
                 .thenReturn(Optional.empty());
         when(workspaceMemberRepository.save(any(WorkspaceMember.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        WorkspaceMemberDTO result = workspaceService.invite(callerId,
+        WorkspaceMemberResponse result = workspaceService.invite(callerId,
                 new InviteRequest("target@example.com", WorkspaceRole.MEMBER));
 
         assertThat(result.email()).isEqualTo("target@example.com");
@@ -210,7 +210,7 @@ class WorkspaceServiceTest {
         when(workspaceMemberRepository.findByWorkspaceIdAndUserId(any(), eq(callerId))).thenReturn(Optional.of(owner));
         when(workspaceMemberRepository.findByWorkspaceIdAndUserId(any(), eq(targetId))).thenReturn(Optional.of(target));
 
-        WorkspaceMemberDTO result = workspaceService.changeRole(callerId, targetId,
+        WorkspaceMemberResponse result = workspaceService.changeRole(callerId, targetId,
                 new ChangeRoleRequest(WorkspaceRole.ADMIN));
 
         assertThat(result.role()).isEqualTo(WorkspaceRole.ADMIN);

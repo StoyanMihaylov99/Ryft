@@ -3,7 +3,7 @@ package com.application.ryft.identity.auth.controller;
 import com.application.ryft.identity.auth.dto.AuthResponse;
 import com.application.ryft.identity.auth.dto.LoginRequest;
 import com.application.ryft.identity.auth.dto.RegisterRequest;
-import com.application.ryft.identity.user.dto.UserDTO;
+import com.application.ryft.identity.user.dto.UserResponse;
 import com.application.ryft.identity.auth.exception.InvalidRefreshTokenException;
 import com.application.ryft.identity.security.RefreshTokenCookieSupport;
 import com.application.ryft.identity.auth.service.AuthResult;
@@ -77,7 +77,7 @@ public class AuthController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<UserDTO> me(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<UserResponse> me(@AuthenticationPrincipal Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ResponseEntity.ok(userService.getById(userId));
     }

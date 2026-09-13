@@ -3,7 +3,7 @@ package com.application.ryft.projects.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-public record ProjectDTO(
+public record ProjectResponse(
         UUID id,
         UUID workspaceId,
         String key,

@@ -1,13 +1,13 @@
 package com.application.ryft.projects.service;
 
-import com.application.ryft.identity.user.dto.UserDTO;
+import com.application.ryft.identity.user.dto.UserResponse;
 import com.application.ryft.identity.user.service.UserService;
 import com.application.ryft.identity.workspace.service.WorkspaceService;
 import com.application.ryft.projects.dto.AddProjectMemberRequest;
 import com.application.ryft.projects.dto.ChangeProjectMemberRoleRequest;
 import com.application.ryft.projects.dto.CreateProjectRequest;
-import com.application.ryft.projects.dto.ProjectDTO;
-import com.application.ryft.projects.dto.ProjectMemberDTO;
+import com.application.ryft.projects.dto.ProjectResponse;
+import com.application.ryft.projects.dto.ProjectMemberResponse;
 import com.application.ryft.projects.dto.UpdateProjectRequest;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
@@ -50,7 +50,7 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional
-    public ProjectDTO create(UUID callerId, CreateProjectRequest request) {
+    public ProjectResponse create(UUID callerId, CreateProjectRequest request) {
         UUID workspaceId = requireWorkspaceId();
         String key = normalizeKey(request.key());
         if (projectRepository.existsByWorkspaceIdAndKey(workspaceId, key)) {
@@ -60,30 +60,30 @@ public class ProjectServiceImpl implements ProjectService {
         String description = request.description() == null ? null : request.description().trim();
         Project project = projectRepository.save(new Project(workspaceId, key, request.name().trim(), description));
         projectMemberRepository.save(new ProjectMember(project, callerId, ProjectRole.OWNER));
-        return toDTO(project);
+        return toResponse(project);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectDTO> listForCaller(UUID callerId) {
+    public List<ProjectResponse> listForCaller(UUID callerId) {
         return projectMemberRepository.findAllByUserIdOrderByAddedAtAsc(callerId).stream()
                 .map(ProjectMember::getProject)
                 .filter(project -> !project.isArchived())
-                .map(this::toDTO)
+                .map(this::toResponse)
                 .toList();
     }
 
     @Override
     @Transactional(readOnly = true)
-    public ProjectDTO get(UUID callerId, String projectKey) {
+    public ProjectResponse get(UUID callerId, String projectKey) {
         Project project = requireProject(projectKey);
         requireMembership(project, callerId);
-        return toDTO(project);
+        return toResponse(project);
     }
 
     @Override
     @Transactional
-    public ProjectDTO update(UUID callerId, String projectKey, UpdateProjectRequest request) {
+    public ProjectResponse update(UUID callerId, String projectKey, UpdateProjectRequest request) {
         Project project = requireProject(projectKey);
         ProjectMember caller = requireMembership(project, callerId);
         requireOwnerOrAdmin(caller);
@@ -94,7 +94,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (request.description() != null) {
             project.setDescription(request.description().trim());
         }
-        return toDTO(project);
+        return toResponse(project);
     }
 
     @Override
@@ -108,17 +108,17 @@ public class ProjectServiceImpl implements ProjectService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ProjectMemberDTO> listMembers(UUID callerId, String projectKey) {
+    public List<ProjectMemberResponse> listMembers(UUID callerId, String projectKey) {
         Project project = requireProject(projectKey);
         requireMembership(project, callerId);
         return projectMemberRepository.findAllByProjectIdOrderByAddedAtAsc(project.getId()).stream()
-                .map(this::toMemberDTO)
+                .map(this::toMemberResponse)
                 .toList();
     }
 
     @Override
     @Transactional
-    public ProjectMemberDTO addMember(UUID callerId, String projectKey, AddProjectMemberRequest request) {
+    public ProjectMemberResponse addMember(UUID callerId, String projectKey, AddProjectMemberRequest request) {
         Project project = requireProject(projectKey);
         ProjectMember caller = requireMembership(project, callerId);
         requireOwnerOrAdmin(caller);
@@ -127,19 +127,19 @@ public class ProjectServiceImpl implements ProjectService {
         }
 
         String email = normalizeEmail(request.email());
-        UserDTO target = userService.findByEmail(email)
+        UserResponse target = userService.findByEmail(email)
                 .orElseThrow(() -> new AddMemberTargetNotFoundException(email));
         if (projectMemberRepository.findByProjectIdAndUserId(project.getId(), target.id()).isPresent()) {
             throw new AlreadyProjectMemberException(email);
         }
 
         ProjectMember member = projectMemberRepository.save(new ProjectMember(project, target.id(), request.role()));
-        return toMemberDTO(member);
+        return toMemberResponse(member);
     }
 
     @Override
     @Transactional
-    public ProjectMemberDTO changeMemberRole(UUID callerId, String projectKey, UUID targetUserId,
+    public ProjectMemberResponse changeMemberRole(UUID callerId, String projectKey, UUID targetUserId,
             ChangeProjectMemberRoleRequest request) {
         Project project = requireProject(projectKey);
         ProjectMember caller = requireMembership(project, callerId);
@@ -154,7 +154,7 @@ public class ProjectServiceImpl implements ProjectService {
         ProjectMember target = projectMemberRepository.findByProjectIdAndUserId(project.getId(), targetUserId)
                 .orElseThrow(ProjectMemberNotFoundException::new);
         target.setRole(request.role());
-        return toMemberDTO(target);
+        return toMemberResponse(target);
     }
 
     @Override
@@ -200,14 +200,14 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private ProjectDTO toDTO(Project project) {
-        return new ProjectDTO(project.getId(), project.getWorkspaceId(), project.getKey(), project.getName(),
+    private ProjectResponse toResponse(Project project) {
+        return new ProjectResponse(project.getId(), project.getWorkspaceId(), project.getKey(), project.getName(),
                 project.getDescription(), project.getCreatedAt(), project.getArchivedAt());
     }
 
-    private ProjectMemberDTO toMemberDTO(ProjectMember member) {
-        UserDTO user = userService.getById(member.getUserId());
-        return new ProjectMemberDTO(user.id(), user.email(), user.displayName(), user.avatarUrl(),
+    private ProjectMemberResponse toMemberResponse(ProjectMember member) {
+        UserResponse user = userService.getById(member.getUserId());
+        return new ProjectMemberResponse(user.id(), user.email(), user.displayName(), user.avatarUrl(),
                 member.getRole(), member.getAddedAt());
     }
 

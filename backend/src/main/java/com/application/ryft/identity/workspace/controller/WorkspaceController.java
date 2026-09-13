@@ -3,7 +3,7 @@ package com.application.ryft.identity.workspace.controller;
 import com.application.ryft.identity.workspace.dto.ChangeRoleRequest;
 import com.application.ryft.identity.workspace.dto.CreateWorkspaceRequest;
 import com.application.ryft.identity.workspace.dto.InviteRequest;
-import com.application.ryft.identity.workspace.dto.WorkspaceMemberDTO;
+import com.application.ryft.identity.workspace.dto.WorkspaceMemberResponse;
 import com.application.ryft.identity.workspace.service.WorkspaceService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -31,26 +31,26 @@ public class WorkspaceController {
     }
 
     @PostMapping("/setup")
-    public ResponseEntity<WorkspaceMemberDTO> completeSetup(@AuthenticationPrincipal Jwt jwt,
+    public ResponseEntity<WorkspaceMemberResponse> completeSetup(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateWorkspaceRequest request) {
-        WorkspaceMemberDTO member = workspaceService.completeSetup(callerId(jwt), request);
+        WorkspaceMemberResponse member = workspaceService.completeSetup(callerId(jwt), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(member);
     }
 
     @GetMapping("/members")
-    public ResponseEntity<List<WorkspaceMemberDTO>> members(@AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<List<WorkspaceMemberResponse>> members(@AuthenticationPrincipal Jwt jwt) {
         return ResponseEntity.ok(workspaceService.listMembers(callerId(jwt)));
     }
 
     @PostMapping("/invite")
-    public ResponseEntity<WorkspaceMemberDTO> invite(@AuthenticationPrincipal Jwt jwt,
+    public ResponseEntity<WorkspaceMemberResponse> invite(@AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody InviteRequest request) {
-        WorkspaceMemberDTO member = workspaceService.invite(callerId(jwt), request);
+        WorkspaceMemberResponse member = workspaceService.invite(callerId(jwt), request);
         return ResponseEntity.status(HttpStatus.CREATED).body(member);
     }
 
     @PatchMapping("/members/{userId}")
-    public ResponseEntity<WorkspaceMemberDTO> changeRole(@AuthenticationPrincipal Jwt jwt,
+    public ResponseEntity<WorkspaceMemberResponse> changeRole(@AuthenticationPrincipal Jwt jwt,
             @PathVariable UUID userId, @Valid @RequestBody ChangeRoleRequest request) {
         return ResponseEntity.ok(workspaceService.changeRole(callerId(jwt), userId, request));
     }
