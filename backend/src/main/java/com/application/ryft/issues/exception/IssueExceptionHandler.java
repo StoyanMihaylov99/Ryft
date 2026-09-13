@@ -36,6 +36,16 @@ public class IssueExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(CommentNotFoundException.class)
+    public ResponseEntity<ApiError> handleCommentNotFound(CommentNotFoundException ex) {
+        return status(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(NotCommentAuthorException.class)
+    public ResponseEntity<ApiError> handleNotCommentAuthor(NotCommentAuthorException ex) {
+        return status(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
     private ResponseEntity<ApiError> status(HttpStatus status, String message) {
         return ResponseEntity.status(status)
                 .body(ApiError.of(status.value(), status.getReasonPhrase(), message));
