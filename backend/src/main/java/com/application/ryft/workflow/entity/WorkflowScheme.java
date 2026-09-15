@@ -17,7 +17,7 @@ import org.hibernate.annotations.UuidGenerator;
  * v1 has exactly one scheme per project. {@code projectId} is a
  * plain id, not a JPA relation: the projects module's Project entity stays behind its own module. This
  * is also the direction that keeps the dependency one-way — {@code workflow} points at {@code projects}
- * (via ProjectAccess, for membership checks), never the reverse, so a project never needs to know a
+ * (via WorkflowProjectAccess, for membership checks), never the reverse, so a project never needs to know a
  * workflow scheme exists. The default scheme is created lazily (see WorkflowServiceImpl) the first time
  * anyone asks for a project's workflow, not eagerly at project-creation time — that's what avoids a
  * circular module dependency here.

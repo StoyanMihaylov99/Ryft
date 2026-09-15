@@ -12,14 +12,16 @@ import org.springframework.stereotype.Component;
  * membership. Centralizes the cross-module exception translation (see
  * {@link ProjectNotFoundException}'s javadoc for why that translation has to happen at all) so it
  * can't silently drift between callers as more issue-adjacent services (comments, labels, ...) are
- * added.
+ * added. Named per-module (rather than just "ProjectAccess") because {@code workflow.service} has an
+ * equivalent class for the same reason: two same-named {@code @Component} classes in different
+ * packages would otherwise collide under Spring's default bean naming (which ignores the package).
  */
 @Component
-class ProjectAccess {
+class IssueProjectAccess {
 
     private final ProjectService projectService;
 
-    ProjectAccess(ProjectService projectService) {
+    IssueProjectAccess(ProjectService projectService) {
         this.projectService = projectService;
     }
 

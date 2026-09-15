@@ -36,7 +36,7 @@ class WorkflowServiceTest {
     private WorkflowStatusRepository workflowStatusRepository;
 
     @Mock
-    private ProjectAccess projectAccess;
+    private WorkflowProjectAccess projectAccess;
 
     private WorkflowServiceImpl workflowService;
 

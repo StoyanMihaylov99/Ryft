@@ -18,10 +18,10 @@ public class WorkflowServiceImpl implements WorkflowService {
 
     private final WorkflowSchemeRepository workflowSchemeRepository;
     private final WorkflowStatusRepository workflowStatusRepository;
-    private final ProjectAccess projectAccess;
+    private final WorkflowProjectAccess projectAccess;
 
     public WorkflowServiceImpl(WorkflowSchemeRepository workflowSchemeRepository,
-            WorkflowStatusRepository workflowStatusRepository, ProjectAccess projectAccess) {
+            WorkflowStatusRepository workflowStatusRepository, WorkflowProjectAccess projectAccess) {
         this.workflowSchemeRepository = workflowSchemeRepository;
         this.workflowStatusRepository = workflowStatusRepository;
         this.projectAccess = projectAccess;
