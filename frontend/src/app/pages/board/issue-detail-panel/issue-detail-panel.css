@@ -1,0 +1,236 @@
+.panel-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 55%);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 20;
+}
+
+.panel {
+  width: 100%;
+  max-width: 460px;
+  height: 100%;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-subtle);
+  padding: 1.5rem;
+  overflow-y: auto;
+  box-shadow: -8px 0 24px var(--shadow);
+  position: relative;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
+.close-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  border: none;
+  background: transparent;
+  font-size: 1.375rem;
+  line-height: 1;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  color: var(--text);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin: 0 2rem 1.25rem 0;
+}
+
+.issue-key {
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.8125rem;
+}
+
+.issue-type {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated-2);
+  padding: 0.1875rem 0.5rem;
+  border-radius: 4px;
+}
+
+.title-input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text);
+  padding: 0.375rem;
+  margin: 0 0 1rem -0.375rem;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.title-input:hover:not(:disabled),
+.title-input:focus {
+  border-color: var(--border);
+  background: var(--bg);
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.title-input:disabled {
+  color: var(--text);
+  cursor: default;
+}
+
+.field-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  flex: 1;
+}
+
+select,
+textarea {
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+select:disabled,
+textarea:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.description-label {
+  margin-bottom: 1.25rem;
+}
+
+.delete-btn {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  margin-bottom: 1.75rem;
+}
+
+.delete-btn:hover {
+  background: var(--danger-bg);
+}
+
+.comments h3 {
+  margin: 0 0 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.comment {
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.comment-body {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.comment-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.comment-actions button {
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.comment-actions button:hover {
+  color: var(--accent);
+}
+
+.new-comment {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.new-comment button {
+  align-self: flex-start;
+  padding: 0.4375rem 0.75rem;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.new-comment button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.new-comment button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.empty-state {
+  color: var(--text-tertiary);
+  font-size: 0.8125rem;
+}
+
+.banner {
+  padding: 0.625rem 0.75rem;
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.8125rem;
+  margin-bottom: 1rem;
+}

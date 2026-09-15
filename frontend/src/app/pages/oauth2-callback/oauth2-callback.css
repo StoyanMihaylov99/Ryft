@@ -3,4 +3,10 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-family:
+    system-ui,
+    -apple-system,
+    sans-serif;
 }

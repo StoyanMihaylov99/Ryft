@@ -13,6 +13,7 @@ import com.application.ryft.identity.user.entity.User;
 import com.application.ryft.identity.user.repository.UserRepository;
 import com.application.ryft.identity.workspace.entity.Workspace;
 import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
+import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -142,6 +143,44 @@ class IssueControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void createIssueByPlainMemberReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        addMembership(project, userOf(memberEmail), ProjectRole.MEMBER);
+
+        mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void createIssueByAdminSucceeds() throws Exception {
+        String ownerEmail = uniqueEmail();
+        registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String adminEmail = uniqueEmail();
+        String adminToken = registerAndGetToken(adminEmail);
+        addMembership(project, userOf(adminEmail), ProjectRole.ADMIN);
+
+        mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
     void createIssueForUnknownProjectReturns404() throws Exception {
         String email = uniqueEmail();
         String token = registerAndGetToken(email);
@@ -246,12 +285,39 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new UpdateIssueRequest("New title", null, null, member.getId(), null))))
+                                new UpdateIssueRequest("New title", null, null, member.getId()))))
                 .andExpect(status().isOk())
                 .andReturn();
         IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
         assertThat(result.title()).isEqualTo("New title");
         assertThat(result.assigneeId()).isEqualTo(member.getId());
+    }
+
+    @Test
+    void updateByPlainMemberReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        addMembership(project, userOf(memberEmail), ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateIssueRequest("Hijacked", null, null, null))))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -270,16 +336,93 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
 
-        MvcResult updated = mockMvc.perform(patch("/api/v1/issues/{issueKey}", issue.key())
+        MvcResult updated = mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(
-                                new UpdateIssueRequest(null, null, null, null, IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
                 .andExpect(status().isOk())
                 .andReturn();
         IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
         assertThat(result.status()).isEqualTo(IssueStatus.DONE);
         assertThat(result.resolvedAt()).isNotNull();
+    }
+
+    @Test
+    void updateStatusByPlainMemberSucceeds() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        addMembership(project, userOf(memberEmail), ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        // Unlike create/update/delete, a plain Member is allowed to drag a card (change its status).
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.IN_PROGRESS))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void updateStatusByNonMemberReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        createProject(key, userOf(ownerEmail));
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        String outsiderToken = registerAndGetToken(uniqueEmail());
+
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + outsiderToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteByPlainMemberReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        addMembership(project, userOf(memberEmail), ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(delete("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+                .andExpect(status().isForbidden());
     }
 
     @Test

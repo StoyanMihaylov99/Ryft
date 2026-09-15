@@ -1,12 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
 import { WorkspaceMember, WorkspaceRole } from '../../core/workspace/models';
 import { WorkspaceService } from '../../core/workspace/workspace.service';
 
 @Component({
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, Sidebar],
   selector: 'app-workspace',
   templateUrl: './workspace.html',
   styleUrl: './workspace.css',

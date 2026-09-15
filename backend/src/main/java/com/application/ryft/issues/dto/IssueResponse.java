@@ -1,5 +1,6 @@
 package com.application.ryft.issues.dto;
 
+import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
@@ -21,4 +22,11 @@ public record IssueResponse(
         Instant updatedAt,
         Instant resolvedAt
 ) {
+
+    public static IssueResponse from(Issue issue) {
+        return new IssueResponse(issue.getId(), issue.getProjectId(), issue.getKey(), issue.getType(),
+                issue.getTitle(), issue.getDescription(), issue.getStatus(), issue.getPriority(),
+                issue.getAssigneeId(), issue.getReporterId(), issue.getCreatedAt(), issue.getUpdatedAt(),
+                issue.getResolvedAt());
+    }
 }

@@ -62,6 +62,39 @@ class IssueProjectAccessTest {
     }
 
     @Test
+    void requireMembershipTranslatesWorkspaceNotReady() {
+        when(projectService.get(callerId, "TRK"))
+                .thenThrow(new com.application.ryft.projects.exception.WorkspaceNotReadyException());
+
+        assertThatThrownBy(() -> projectAccess.requireMembership(callerId, "TRK"))
+                .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    void isOwnerOrAdminTrueForOwner() {
+        when(projectService.listMembers(callerId, "TRK")).thenReturn(
+                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.OWNER, Instant.now())));
+
+        assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isTrue();
+    }
+
+    @Test
+    void isOwnerOrAdminTrueForAdmin() {
+        when(projectService.listMembers(callerId, "TRK")).thenReturn(
+                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.ADMIN, Instant.now())));
+
+        assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isTrue();
+    }
+
+    @Test
+    void isOwnerOrAdminFalseForPlainMember() {
+        when(projectService.listMembers(callerId, "TRK")).thenReturn(
+                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.MEMBER, Instant.now())));
+
+        assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isFalse();
+    }
+
+    @Test
     void isMemberTrueWhenUserIsAmongProjectMembers() {
         UUID userId = UUID.randomUUID();
         when(projectService.listMembers(callerId, "TRK")).thenReturn(

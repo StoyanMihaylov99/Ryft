@@ -31,6 +31,9 @@ class WorkflowProjectAccess {
             throw new ProjectNotFoundException(projectKey);
         } catch (com.application.ryft.projects.exception.NotAProjectMemberException e) {
             throw new NotAProjectMemberException();
+        } catch (com.application.ryft.projects.exception.WorkspaceNotReadyException e) {
+            // No workspace at all yet means no project can exist either — same 404 as ProjectNotFoundException.
+            throw new ProjectNotFoundException(projectKey);
         }
     }
 }

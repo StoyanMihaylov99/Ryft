@@ -1,0 +1,66 @@
+<aside class="sidebar">
+  <div class="brand">
+    <span class="brand-mark">R</span>
+    <span class="brand-name">Ryft</span>
+  </div>
+
+  <nav class="nav">
+    <a routerLink="/projects" routerLinkActive="active" class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" />
+      </svg>
+      <span>Projects</span>
+    </a>
+    <a routerLink="/workspace" routerLinkActive="active" class="nav-item">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="8" r="3.25" />
+        <path d="M3.5 20c0-3.5 2.7-6 5.5-6s5.5 2.5 5.5 6" />
+        <circle cx="17" cy="7.5" r="2.5" />
+        <path d="M15.2 14.3c2.2.3 4.3 2.4 4.3 5.7" />
+      </svg>
+      <span>Workspace</span>
+    </a>
+  </nav>
+
+  <div class="sidebar-footer">
+    @if (currentUser(); as user) {
+      <div class="user">
+        <span class="avatar">{{ initials(user.displayName) }}</span>
+        <span class="user-name">{{ user.displayName }}</span>
+      </div>
+    }
+
+    <div class="footer-actions">
+      <button
+        type="button"
+        class="icon-btn"
+        (click)="toggleTheme()"
+        [attr.aria-label]="themeService.theme() === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'"
+      >
+        @if (themeService.theme() === 'dark') {
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4.2" />
+            <path
+              d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.55 1.55M18.25 18.25l1.55 1.55M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.55-1.55M18.25 5.75l1.55-1.55"
+            />
+          </svg>
+        } @else {
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 14.2A8.5 8.5 0 1 1 9.8 4a6.6 6.6 0 0 0 10.2 10.2Z" />
+          </svg>
+        }
+      </button>
+
+      <button type="button" class="icon-btn" (click)="logout()" aria-label="Log out">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+          <path d="M16 17l5-5-5-5" />
+          <path d="M21 12H9" />
+        </svg>
+      </button>
+    </div>
+  </div>
+</aside>

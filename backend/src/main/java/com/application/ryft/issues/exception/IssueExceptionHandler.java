@@ -36,6 +36,11 @@ public class IssueExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(InsufficientProjectRoleException.class)
+    public ResponseEntity<ApiError> handleInsufficientProjectRole(InsufficientProjectRoleException ex) {
+        return status(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
     @ExceptionHandler(CommentNotFoundException.class)
     public ResponseEntity<ApiError> handleCommentNotFound(CommentNotFoundException ex) {
         return status(HttpStatus.NOT_FOUND, ex.getMessage());

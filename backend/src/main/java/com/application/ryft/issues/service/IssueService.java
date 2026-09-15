@@ -1,5 +1,6 @@
 package com.application.ryft.issues.service;
 
+import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -15,6 +16,8 @@ public interface IssueService {
     IssueResponse get(UUID callerId, String issueKey);
 
     IssueResponse update(UUID callerId, String issueKey, UpdateIssueRequest request);
+
+    IssueResponse changeStatus(UUID callerId, String issueKey, ChangeIssueStatusRequest request);
 
     void delete(UUID callerId, String issueKey);
 }
