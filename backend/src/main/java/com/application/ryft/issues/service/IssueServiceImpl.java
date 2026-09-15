@@ -1,5 +1,6 @@
 package com.application.ryft.issues.service;
 
+import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -8,6 +9,7 @@ import com.application.ryft.issues.entity.IssueKeySequence;
 import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
+import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
@@ -37,6 +39,7 @@ public class IssueServiceImpl implements IssueService {
     @Transactional
     public IssueResponse create(UUID callerId, String projectKey, CreateIssueRequest request) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        requireOwnerOrAdmin(callerId, projectKey);
         if (request.assigneeId() != null) {
             requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
         }
@@ -47,7 +50,7 @@ public class IssueServiceImpl implements IssueService {
 
         Issue issue = issueRepository.save(new Issue(project.id(), issueKey, request.type(), request.title().trim(),
                 description, priority, request.assigneeId(), callerId));
-        return toResponse(issue);
+        return IssueResponse.from(issue);
     }
 
     @Override
@@ -55,7 +58,7 @@ public class IssueServiceImpl implements IssueService {
     public List<IssueResponse> listForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         return issueRepository.findAllByProjectIdOrderByCreatedAtAsc(project.id()).stream()
-                .map(this::toResponse)
+                .map(IssueResponse::from)
                 .toList();
     }
 
@@ -64,7 +67,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse get(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
         projectAccess.requireMembership(callerId, projectKeyOf(issue));
-        return toResponse(issue);
+        return IssueResponse.from(issue);
     }
 
     @Override
@@ -73,9 +76,19 @@ public class IssueServiceImpl implements IssueService {
         Issue issue = requireIssue(issueKey);
         String projectKey = projectKeyOf(issue);
         projectAccess.requireMembership(callerId, projectKey);
+        requireOwnerOrAdmin(callerId, projectKey);
 
         applyUpdate(issue, callerId, projectKey, request);
-        return toResponse(issue);
+        return IssueResponse.from(issue);
+    }
+
+    @Override
+    @Transactional
+    public IssueResponse changeStatus(UUID callerId, String issueKey, ChangeIssueStatusRequest request) {
+        Issue issue = requireIssue(issueKey);
+        projectAccess.requireMembership(callerId, projectKeyOf(issue));
+        setStatus(issue, request.status());
+        return IssueResponse.from(issue);
     }
 
     private void applyUpdate(Issue issue, UUID callerId, String projectKey, UpdateIssueRequest request) {
@@ -83,7 +96,6 @@ public class IssueServiceImpl implements IssueService {
         applyDescription(issue, request);
         applyPriority(issue, request);
         applyAssignee(issue, callerId, projectKey, request);
-        applyStatus(issue, request);
     }
 
     private void applyTitle(Issue issue, UpdateIssueRequest request) {
@@ -111,19 +123,25 @@ public class IssueServiceImpl implements IssueService {
         }
     }
 
-    private void applyStatus(Issue issue, UpdateIssueRequest request) {
-        if (request.status() != null) {
-            issue.setStatus(request.status());
-            issue.setResolvedAt(request.status() == IssueStatus.DONE ? Instant.now() : null);
-        }
+    private void setStatus(Issue issue, IssueStatus status) {
+        issue.setStatus(status);
+        issue.setResolvedAt(status == IssueStatus.DONE ? Instant.now() : null);
     }
 
     @Override
     @Transactional
     public void delete(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
-        projectAccess.requireMembership(callerId, projectKeyOf(issue));
+        String projectKey = projectKeyOf(issue);
+        projectAccess.requireMembership(callerId, projectKey);
+        requireOwnerOrAdmin(callerId, projectKey);
         issueRepository.delete(issue);
+    }
+
+    private void requireOwnerOrAdmin(UUID callerId, String projectKey) {
+        if (!projectAccess.isOwnerOrAdmin(callerId, projectKey)) {
+            throw new InsufficientProjectRoleException();
+        }
     }
 
     private String nextIssueKey(UUID projectId, String projectKey) {
@@ -148,12 +166,6 @@ public class IssueServiceImpl implements IssueService {
         if (!projectAccess.isMember(callerId, projectKey, assigneeId)) {
             throw new AssigneeNotAProjectMemberException();
         }
-    }
-
-    private IssueResponse toResponse(Issue issue) {
-        return new IssueResponse(issue.getId(), issue.getProjectId(), issue.getKey(), issue.getType(), issue.getTitle(),
-                issue.getDescription(), issue.getStatus(), issue.getPriority(), issue.getAssigneeId(),
-                issue.getReporterId(), issue.getCreatedAt(), issue.getUpdatedAt(), issue.getResolvedAt());
     }
 
     private String normalizeKey(String key) {

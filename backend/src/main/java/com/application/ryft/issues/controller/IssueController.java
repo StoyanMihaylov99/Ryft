@@ -1,5 +1,6 @@
 package com.application.ryft.issues.controller;
 
+import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.service.IssueService;
@@ -36,6 +37,12 @@ public class IssueController {
     public ResponseEntity<IssueResponse> update(@AuthenticationPrincipal Jwt jwt, @PathVariable String issueKey,
             @Valid @RequestBody UpdateIssueRequest request) {
         return ResponseEntity.ok(issueService.update(callerId(jwt), issueKey, request));
+    }
+
+    @PatchMapping("/{issueKey}/status")
+    public ResponseEntity<IssueResponse> updateStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable String issueKey,
+            @Valid @RequestBody ChangeIssueStatusRequest request) {
+        return ResponseEntity.ok(issueService.changeStatus(callerId(jwt), issueKey, request));
     }
 
     @DeleteMapping("/{issueKey}")

@@ -3,6 +3,7 @@ import { authGuard } from './core/auth/auth.guard';
 import { Login } from './pages/login/login';
 import { Oauth2Callback } from './pages/oauth2-callback/oauth2-callback';
 import { Workspace } from './pages/workspace/workspace';
+import { ProjectList } from './pages/project-list/project-list';
 import { Project } from './pages/project/project';
 import { Board } from './pages/board/board';
 
@@ -12,7 +13,8 @@ export const routes: Routes = [
   // server-side) — this is where the backend redirects the browser back to afterwards.
   { path: 'oauth2/callback', component: Oauth2Callback },
   { path: 'workspace', component: Workspace, canActivate: [authGuard] },
-  { path: 'projects/:projectKey', component: Project, canActivate: [authGuard] },
+  { path: 'projects', component: ProjectList, canActivate: [authGuard] },
   { path: 'projects/:projectKey/board', component: Board, canActivate: [authGuard] },
+  { path: 'projects/:projectKey', component: Project, canActivate: [authGuard] },
   { path: '', redirectTo: 'login', pathMatch: 'full' },
 ];

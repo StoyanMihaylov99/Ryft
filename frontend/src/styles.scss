@@ -1,1 +1,136 @@
-/* You can add global styles to this file, and also import other style files */
+/*
+ * Design tokens. Dark is the default on bare :root (not gated behind a [data-theme] attribute) so
+ * the very first paint — before Angular has booted or ThemeService has run — is already correct with
+ * zero flash. [data-theme="light"] overrides every token for the light variant; ThemeService toggles
+ * that attribute on <html>. See core/theme/theme.service.ts for why this shape was chosen (the app's
+ * CSP forbids the usual inline-script anti-flash trick).
+ */
+:root {
+  --sidebar-width: 232px;
+  --bg: #0a0a0c;
+  --bg-elevated: #141416;
+  --bg-elevated-2: #1c1c1f;
+  --border: #26262a;
+  --border-subtle: #1c1c1f;
+  --text: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #6b6b70;
+  --accent: #6d5ef5;
+  --accent-hover: #8072f8;
+  --accent-text: #ffffff;
+  --danger: #f65a5a;
+  --danger-bg: rgb(246 90 90 / 12%);
+  --success: #3ecf8e;
+  --success-bg: rgb(62 207 142 / 12%);
+  --warning: #f5a623;
+  --warning-bg: rgb(245 166 35 / 12%);
+  --shadow: rgb(0 0 0 / 40%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 35%);
+  --focus-ring: rgb(109 94 245 / 30%);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --bg: #ffffff;
+  --bg-elevated: #fafafa;
+  --bg-elevated-2: #f0f0f1;
+  --border: #e4e4e7;
+  --border-subtle: #ededef;
+  --text: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #94949c;
+  --accent: #5b4fd6;
+  --accent-hover: #4c41c4;
+  --accent-text: #ffffff;
+  --danger: #dc3d3d;
+  --danger-bg: rgb(220 61 61 / 8%);
+  --success: #16a34a;
+  --success-bg: rgb(22 163 74 / 8%);
+  --warning: #d97706;
+  --warning-bg: rgb(217 119 6 / 8%);
+  --shadow: rgb(0 0 0 / 8%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 6%);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 10%);
+  --focus-ring: rgb(91 79 214 / 18%);
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * A flat, un-animated UI reads as a template rather than a crafted product. Rather than repeat
+ * transition/focus declarations in every page's stylesheet, interactive elements get them here:
+ * a short, consistent motion curve on hover/press, and a soft accent glow (instead of a hard
+ * outline) when focused via keyboard.
+ */
+a,
+button,
+input,
+textarea,
+select,
+.card,
+.project-card,
+.issue-card,
+.column,
+.nav-item,
+.icon-btn {
+  transition:
+    background-color 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease),
+    transform 0.15s var(--ease);
+}
+
+button {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+  border-radius: 4px;
+}
+
+/* Shared authenticated-page layout: a fixed sidebar plus a scrollable content area beside it. */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+}
+
+@media (max-width: 720px) {
+  :root {
+    --sidebar-width: 64px;
+  }
+}

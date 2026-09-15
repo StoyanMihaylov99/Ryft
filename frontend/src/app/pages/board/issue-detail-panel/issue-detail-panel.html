@@ -1,0 +1,104 @@
+<div class="panel-backdrop" (click)="close()">
+  <aside class="panel" (click)="$event.stopPropagation()">
+    <button type="button" class="close-btn" (click)="close()" aria-label="Close">&times;</button>
+
+    @if (loading()) {
+      <p class="empty-state">Loading…</p>
+    } @else if (!issue()) {
+      <div class="banner">{{ errorMessage() }}</div>
+    } @else if (issue(); as issue) {
+      <div class="panel-header">
+        <span class="issue-key">{{ issue.key }}</span>
+        <span class="issue-type">{{ issue.type }}</span>
+      </div>
+
+      @if (errorMessage()) {
+        <div class="banner">{{ errorMessage() }}</div>
+      }
+
+      <input
+        class="title-input"
+        [value]="issue.title"
+        [disabled]="!canManage()"
+        (blur)="saveTitle($any($event.target).value)"
+      />
+
+      <div class="field-row">
+        <label>
+          Status
+          <select [value]="issue.status" (change)="changeStatus($any($event.target).value)">
+            <option value="TODO">To Do</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="DONE">Done</option>
+          </select>
+        </label>
+        <label>
+          Priority
+          <select [value]="issue.priority" [disabled]="!canManage()" (change)="changePriority($any($event.target).value)">
+            <option value="LOWEST">Lowest</option>
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+            <option value="HIGHEST">Highest</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="description-label">
+        Description
+        <textarea
+          rows="5"
+          [value]="issue.description ?? ''"
+          [disabled]="!canManage()"
+          (blur)="saveDescription($any($event.target).value)"
+          placeholder="Add a description…"
+        ></textarea>
+      </label>
+
+      @if (canManage()) {
+        <button type="button" class="delete-btn" (click)="deleteIssue()">Delete issue</button>
+      }
+
+      <div class="comments">
+        <h3>Comments</h3>
+        @for (comment of comments(); track comment.id) {
+          <div class="comment">
+            @if (editingCommentId() === comment.id) {
+              <textarea
+                rows="2"
+                [value]="editingCommentBody()"
+                (input)="editingCommentBody.set($any($event.target).value)"
+              ></textarea>
+              <div class="comment-actions">
+                <button type="button" (click)="saveComment(comment.id)">Save</button>
+                <button type="button" (click)="cancelEditComment()">Cancel</button>
+              </div>
+            } @else {
+              <p class="comment-body">{{ comment.body }}</p>
+              @if (comment.authorId === currentUserId()) {
+                <div class="comment-actions">
+                  <button type="button" (click)="startEditComment(comment)">Edit</button>
+                  <button type="button" (click)="deleteComment(comment.id)">Delete</button>
+                </div>
+              }
+            }
+          </div>
+        } @empty {
+          <p class="empty-state">No comments yet.</p>
+        }
+
+        <div class="new-comment">
+          <textarea
+            rows="2"
+            placeholder="Add a comment…"
+            [value]="newCommentBody()"
+            (input)="newCommentBody.set($any($event.target).value)"
+          ></textarea>
+          <button type="button" [disabled]="postingComment()" (click)="submitComment()">
+            {{ postingComment() ? 'Posting…' : 'Comment' }}
+          </button>
+        </div>
+      </div>
+    }
+  </aside>
+</div>

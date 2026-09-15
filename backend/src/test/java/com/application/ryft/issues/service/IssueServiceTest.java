@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -16,6 +17,7 @@ import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
+import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
@@ -59,6 +61,7 @@ class IssueServiceTest {
     @Test
     void createGeneratesKeyAndDefaultsPriorityAndStatus() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
         when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -75,6 +78,7 @@ class IssueServiceTest {
     @Test
     void createUsesSecondSequenceNumberWhenSequenceExists() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
         IssueKeySequence existing = new IssueKeySequence(projectId);
         existing.incrementAndGet();
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.of(existing));
@@ -109,8 +113,20 @@ class IssueServiceTest {
     }
 
     @Test
+    void createRejectsCallerWhoIsNotOwnerOrAdmin() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
+                .isInstanceOf(InsufficientProjectRoleException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
     void createRejectsAssigneeNotAProjectMember() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
         UUID outsiderId = UUID.randomUUID();
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
@@ -123,6 +139,7 @@ class IssueServiceTest {
     @Test
     void createAcceptsAssigneeThatIsAProjectMember() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
         UUID assigneeId = UUID.randomUUID();
         when(projectAccess.isMember(callerId, "TRK", assigneeId)).thenReturn(true);
         when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
@@ -159,9 +176,10 @@ class IssueServiceTest {
                 callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null, null));
+                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null));
 
         assertThat(result.title()).isEqualTo("New title");
         assertThat(result.description()).isEqualTo("orig desc");
@@ -169,30 +187,15 @@ class IssueServiceTest {
     }
 
     @Test
-    void updateToDoneSetsResolvedAt() {
+    void updateRejectsCallerWhoIsNotOwnerOrAdmin() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
 
-        IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, null, IssueStatus.DONE));
-
-        assertThat(result.status()).isEqualTo(IssueStatus.DONE);
-        assertThat(result.resolvedAt()).isNotNull();
-    }
-
-    @Test
-    void updateAwayFromDoneClearsResolvedAt() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
-        issue.setStatus(IssueStatus.DONE);
-        issue.setResolvedAt(Instant.now());
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-
-        IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, null, IssueStatus.IN_PROGRESS));
-
-        assertThat(result.resolvedAt()).isNull();
+        assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
+                new UpdateIssueRequest("New title", null, null, null)))
+                .isInstanceOf(InsufficientProjectRoleException.class);
     }
 
     @Test
@@ -200,12 +203,53 @@ class IssueServiceTest {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
         UUID outsiderId = UUID.randomUUID();
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, outsiderId, null)))
+                new UpdateIssueRequest(null, null, null, outsiderId)))
                 .isInstanceOf(AssigneeNotAProjectMemberException.class);
+    }
+
+    @Test
+    void changeStatusToDoneSetsResolvedAt() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+
+        IssueResponse result = issueService.changeStatus(callerId, "TRK-1",
+                new ChangeIssueStatusRequest(IssueStatus.DONE));
+
+        assertThat(result.status()).isEqualTo(IssueStatus.DONE);
+        assertThat(result.resolvedAt()).isNotNull();
+        // Unlike create/update/delete, dragging a card is open to any project member — no role check.
+        verify(projectAccess, never()).isOwnerOrAdmin(any(), any());
+    }
+
+    @Test
+    void changeStatusAwayFromDoneClearsResolvedAt() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
+        issue.setStatus(IssueStatus.DONE);
+        issue.setResolvedAt(Instant.now());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+
+        IssueResponse result = issueService.changeStatus(callerId, "TRK-1",
+                new ChangeIssueStatusRequest(IssueStatus.IN_PROGRESS));
+
+        assertThat(result.resolvedAt()).isNull();
+    }
+
+    @Test
+    void changeStatusRequiresCallerToBeAProjectMember() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
+
+        assertThatThrownBy(() -> issueService.changeStatus(callerId, "TRK-1",
+                new ChangeIssueStatusRequest(IssueStatus.DONE)))
+                .isInstanceOf(NotAProjectMemberException.class);
     }
 
     @Test
@@ -213,12 +257,25 @@ class IssueServiceTest {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         issueService.delete(callerId, "TRK-1");
 
         ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
         verify(issueRepository).delete(captor.capture());
         assertThat(captor.getValue().getKey()).isEqualTo("TRK-1");
+    }
+
+    @Test
+    void deleteRejectsCallerWhoIsNotOwnerOrAdmin() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
+
+        assertThatThrownBy(() -> issueService.delete(callerId, "TRK-1"))
+                .isInstanceOf(InsufficientProjectRoleException.class);
+        verify(issueRepository, never()).delete(any());
     }
 
     @Test

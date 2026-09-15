@@ -1,0 +1,66 @@
+<div class="app-shell">
+  <app-sidebar />
+  <div class="app-content">
+    <div class="page">
+      <div class="header">
+        <h1>Projects</h1>
+        <button type="button" class="submit" (click)="toggleCreateForm()">
+          {{ showCreateForm() ? 'Cancel' : '+ New project' }}
+        </button>
+      </div>
+
+  @if (errorMessage()) {
+    <div class="banner">{{ errorMessage() }}</div>
+  }
+
+  @if (showCreateForm()) {
+    <div class="card">
+      <h2>Create a project</h2>
+      <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
+        <label>
+          Key
+          <input type="text" formControlName="key" placeholder="TRK" autocomplete="off" />
+          @if (createForm.controls.key.invalid && createForm.controls.key.touched) {
+            <span class="field-error">2–10 uppercase letters/digits, starting with a letter.</span>
+          }
+        </label>
+        <label>
+          Name
+          <input type="text" formControlName="name" placeholder="Tracker" autocomplete="off" />
+          @if (createForm.controls.name.invalid && createForm.controls.name.touched) {
+            <span class="field-error">Project name is required.</span>
+          }
+        </label>
+        <label>
+          Description (optional)
+          <textarea formControlName="description" rows="2"></textarea>
+        </label>
+        <button type="submit" class="submit" [disabled]="creating()">
+          {{ creating() ? 'Creating…' : 'Create project' }}
+        </button>
+      </form>
+    </div>
+  }
+
+  @if (loading()) {
+    <p class="empty-state">Loading projects…</p>
+  } @else if (projects().length === 0) {
+    <div class="card">
+      <p class="empty-state">No projects yet. Create one to get started.</p>
+    </div>
+  } @else {
+    <div class="project-grid">
+      @for (project of projects(); track project.id) {
+        <a class="project-card" [routerLink]="['/projects', project.key, 'board']">
+          <span class="project-key">{{ project.key }}</span>
+          <span class="project-name">{{ project.name }}</span>
+          @if (project.description) {
+            <span class="project-description">{{ project.description }}</span>
+          }
+        </a>
+      }
+    </div>
+  }
+    </div>
+  </div>
+</div>
