@@ -41,7 +41,7 @@ class CommentServiceTest {
     private IssueRepository issueRepository;
 
     @Mock
-    private ProjectAccess projectAccess;
+    private IssueProjectAccess projectAccess;
 
     private CommentServiceImpl commentService;
 

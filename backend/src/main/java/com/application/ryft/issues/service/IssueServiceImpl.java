@@ -24,10 +24,10 @@ public class IssueServiceImpl implements IssueService {
 
     private final IssueRepository issueRepository;
     private final IssueKeySequenceRepository issueKeySequenceRepository;
-    private final ProjectAccess projectAccess;
+    private final IssueProjectAccess projectAccess;
 
     public IssueServiceImpl(IssueRepository issueRepository, IssueKeySequenceRepository issueKeySequenceRepository,
-            ProjectAccess projectAccess) {
+            IssueProjectAccess projectAccess) {
         this.issueRepository = issueRepository;
         this.issueKeySequenceRepository = issueKeySequenceRepository;
         this.projectAccess = projectAccess;

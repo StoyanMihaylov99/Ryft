@@ -21,10 +21,10 @@ public class CommentServiceImpl implements CommentService {
 
     private final CommentRepository commentRepository;
     private final IssueRepository issueRepository;
-    private final ProjectAccess projectAccess;
+    private final IssueProjectAccess projectAccess;
 
     public CommentServiceImpl(CommentRepository commentRepository, IssueRepository issueRepository,
-            ProjectAccess projectAccess) {
+            IssueProjectAccess projectAccess) {
         this.commentRepository = commentRepository;
         this.issueRepository = issueRepository;
         this.projectAccess = projectAccess;

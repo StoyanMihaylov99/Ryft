@@ -42,7 +42,7 @@ class IssueServiceTest {
     private IssueKeySequenceRepository issueKeySequenceRepository;
 
     @Mock
-    private ProjectAccess projectAccess;
+    private IssueProjectAccess projectAccess;
 
     private IssueServiceImpl issueService;
 

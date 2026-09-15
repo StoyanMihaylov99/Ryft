@@ -20,18 +20,18 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class ProjectAccessTest {
+class IssueProjectAccessTest {
 
     @Mock
     private ProjectService projectService;
 
-    private ProjectAccess projectAccess;
+    private IssueProjectAccess projectAccess;
 
     private final UUID callerId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        projectAccess = new ProjectAccess(projectService);
+        projectAccess = new IssueProjectAccess(projectService);
     }
 
     @Test
