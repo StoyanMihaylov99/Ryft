@@ -35,8 +35,9 @@ public class Issue {
     @Column(name = "key", nullable = false)
     private String key;
 
+    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "issue_type", nullable = false)
+    @Column(name = "issue_type", nullable = false, columnDefinition = "varchar(32)")
     private IssueType type;
 
     @Column(nullable = false)
@@ -47,13 +48,15 @@ public class Issue {
     @Setter
     private String description;
 
+    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     @Setter
     private IssueStatus status;
 
+    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     @Setter
     private IssuePriority priority;
 

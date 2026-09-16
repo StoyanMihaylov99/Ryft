@@ -17,29 +17,27 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   padding: 1.125rem 1rem;
 }
 
-.brand-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  background: linear-gradient(155deg, var(--accent-hover), var(--accent));
-  color: var(--accent-text);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  box-shadow: var(--shadow-sm);
+/*
+ * logo-full.png / logo-mark.png are a fixed near-black glyph+wordmark on a transparent PNG —
+ * there's no light-on-dark variant of the asset — so on the dark theme they're inverted to white
+ * via CSS filter instead. The light theme shows the PNG's own dark ink unmodified.
+ */
+.brand-logo-full,
+.brand-logo-mark {
+  display: block;
+  filter: invert(1);
 }
 
-.brand-name {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -0.01em;
+:root[data-theme='light'] .brand-logo-full,
+:root[data-theme='light'] .brand-logo-mark {
+  filter: none;
+}
+
+.brand-logo-mark {
+  display: none;
 }
 
 .nav {
@@ -165,7 +163,14 @@
 }
 
 @media (max-width: 720px) {
-  .brand-name,
+  .brand-logo-full {
+    display: none;
+  }
+
+  .brand-logo-mark {
+    display: block;
+  }
+
   .nav-item span,
   .user-name {
     display: none;

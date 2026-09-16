@@ -35,8 +35,15 @@ public class OAuthIdentity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    /**
+     * {@code columnDefinition} is set explicitly so Hibernate doesn't auto-generate a DB-level CHECK
+     * constraint listing the enum's values: {@code ddl-auto: update} (no migration framework here)
+     * never widens such a constraint when the enum gains a new constant later, silently breaking every
+     * insert of the new value against a table created under the old constant set. See
+     * {@code WorkflowStatus.category}'s javadoc, where this was actually hit.
+     */
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     private OAuthProvider provider;
 
     @Column(name = "provider_user_id", nullable = false)
