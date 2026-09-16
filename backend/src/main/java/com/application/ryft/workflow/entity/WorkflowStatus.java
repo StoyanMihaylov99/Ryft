@@ -34,14 +34,6 @@ public class WorkflowStatus {
     @Column(nullable = false)
     private String name;
 
-    /**
-     * {@code columnDefinition} is set explicitly so Hibernate doesn't auto-generate a DB-level CHECK
-     * constraint listing the enum's values at table-creation time: {@code ddl-auto: update} (this
-     * project has no migration framework) only ever adds missing tables/columns, it never widens an
-     * existing CHECK constraint — so adding {@code StatusCategory.BLOCKED} later would otherwise leave
-     * every already-created database rejecting the new value with a 500, even though the same fresh
-     * schema created after the enum change would work fine. Hit exactly this while adding BLOCKED.
-     */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(32)")
     private StatusCategory category;

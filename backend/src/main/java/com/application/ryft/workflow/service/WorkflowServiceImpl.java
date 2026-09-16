@@ -57,21 +57,6 @@ public class WorkflowServiceImpl implements WorkflowService {
         return scheme;
     }
 
-    /**
-     * Schemes created before the Blocked status existed won't have one — there's no migration
-     * framework in this project (Hibernate {@code ddl-auto: update} manages the schema), so existing
-     * rows are repaired lazily on next read instead, the same pattern already used for creating the
-     * scheme itself. Every status at or after "In Progress" shifts one sortOrder slot to make room;
-     * the shift is picked up by JPA dirty checking (these are managed entities within this method's
-     * transaction), only the new row needs an explicit save.
-     *
-     * <p>Note this backfill alone isn't sufficient on a database whose {@code workflow_statuses} table
-     * was already created before this change: Hibernate auto-generates a CHECK constraint listing an
-     * enum's values at table-creation time, and {@code ddl-auto: update} never widens an existing
-     * constraint. {@code WorkflowStatus.category}'s {@code columnDefinition} now suppresses that
-     * constraint going forward, but an already-created table needs its stale constraint dropped once,
-     * by hand (see the migration note in DATA_MODEL.md).
-     */
     private List<WorkflowStatus> backfillBlockedStatusIfMissing(WorkflowScheme scheme, List<WorkflowStatus> statuses) {
         if (statuses.stream().anyMatch(status -> status.getCategory() == StatusCategory.BLOCKED)) {
             return statuses;
