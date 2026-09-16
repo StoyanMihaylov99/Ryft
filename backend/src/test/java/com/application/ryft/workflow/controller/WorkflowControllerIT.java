@@ -97,13 +97,15 @@ class WorkflowControllerIT extends AbstractIntegrationTest {
 
         WorkflowSchemeResponse scheme = objectMapper.readValue(result.getResponse().getContentAsString(),
                 WorkflowSchemeResponse.class);
-        assertThat(scheme.statuses()).hasSize(3);
+        assertThat(scheme.statuses()).hasSize(4);
         assertThat(scheme.statuses().get(0).name()).isEqualTo("To Do");
         assertThat(scheme.statuses().get(0).category()).isEqualTo(StatusCategory.TODO);
-        assertThat(scheme.statuses().get(1).name()).isEqualTo("In Progress");
-        assertThat(scheme.statuses().get(1).category()).isEqualTo(StatusCategory.IN_PROGRESS);
-        assertThat(scheme.statuses().get(2).name()).isEqualTo("Done");
-        assertThat(scheme.statuses().get(2).category()).isEqualTo(StatusCategory.DONE);
+        assertThat(scheme.statuses().get(1).name()).isEqualTo("Blocked");
+        assertThat(scheme.statuses().get(1).category()).isEqualTo(StatusCategory.BLOCKED);
+        assertThat(scheme.statuses().get(2).name()).isEqualTo("In Progress");
+        assertThat(scheme.statuses().get(2).category()).isEqualTo(StatusCategory.IN_PROGRESS);
+        assertThat(scheme.statuses().get(3).name()).isEqualTo("Done");
+        assertThat(scheme.statuses().get(3).category()).isEqualTo(StatusCategory.DONE);
     }
 
     @Test
@@ -127,7 +129,7 @@ class WorkflowControllerIT extends AbstractIntegrationTest {
         WorkflowSchemeResponse secondScheme = objectMapper.readValue(second.getResponse().getContentAsString(),
                 WorkflowSchemeResponse.class);
         assertThat(secondScheme.id()).isEqualTo(firstScheme.id());
-        assertThat(secondScheme.statuses()).hasSize(3);
+        assertThat(secondScheme.statuses()).hasSize(4);
     }
 
     @Test

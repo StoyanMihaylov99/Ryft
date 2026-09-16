@@ -59,18 +59,20 @@ class WorkflowServiceTest {
         when(workflowStatusRepository.save(any(WorkflowStatus.class))).thenAnswer(inv -> inv.getArgument(0));
         when(workflowStatusRepository.findAllByWorkflowSchemeIdOrderBySortOrderAsc(any())).thenReturn(List.of(
                 new WorkflowStatus(savedScheme, "To Do", StatusCategory.TODO, 0),
-                new WorkflowStatus(savedScheme, "In Progress", StatusCategory.IN_PROGRESS, 1),
-                new WorkflowStatus(savedScheme, "Done", StatusCategory.DONE, 2)));
+                new WorkflowStatus(savedScheme, "Blocked", StatusCategory.BLOCKED, 1),
+                new WorkflowStatus(savedScheme, "In Progress", StatusCategory.IN_PROGRESS, 2),
+                new WorkflowStatus(savedScheme, "Done", StatusCategory.DONE, 3)));
 
         WorkflowSchemeResponse result = workflowService.getSchemeForProject(callerId, "TRK");
 
         assertThat(result.projectId()).isEqualTo(projectId);
-        assertThat(result.statuses()).hasSize(3);
+        assertThat(result.statuses()).hasSize(4);
         assertThat(result.statuses().get(0).name()).isEqualTo("To Do");
         assertThat(result.statuses().get(0).category()).isEqualTo(StatusCategory.TODO);
-        assertThat(result.statuses().get(1).name()).isEqualTo("In Progress");
-        assertThat(result.statuses().get(2).name()).isEqualTo("Done");
-        verify(workflowStatusRepository, times(3)).save(any(WorkflowStatus.class));
+        assertThat(result.statuses().get(1).name()).isEqualTo("Blocked");
+        assertThat(result.statuses().get(2).name()).isEqualTo("In Progress");
+        assertThat(result.statuses().get(3).name()).isEqualTo("Done");
+        verify(workflowStatusRepository, times(4)).save(any(WorkflowStatus.class));
     }
 
     @Test
@@ -79,11 +81,40 @@ class WorkflowServiceTest {
         WorkflowScheme existing = new WorkflowScheme(projectId, "Default Workflow");
         when(workflowSchemeRepository.findByProjectId(projectId)).thenReturn(Optional.of(existing));
         when(workflowStatusRepository.findAllByWorkflowSchemeIdOrderBySortOrderAsc(any())).thenReturn(List.of(
-                new WorkflowStatus(existing, "To Do", StatusCategory.TODO, 0)));
+                new WorkflowStatus(existing, "To Do", StatusCategory.TODO, 0),
+                new WorkflowStatus(existing, "Blocked", StatusCategory.BLOCKED, 1)));
 
         WorkflowSchemeResponse result = workflowService.getSchemeForProject(callerId, "TRK");
 
-        assertThat(result.statuses()).hasSize(1);
+        assertThat(result.statuses()).hasSize(2);
+        verify(workflowSchemeRepository, never()).save(any());
+    }
+
+    @Test
+    void backfillsBlockedStatusForASchemeCreatedBeforeItExisted() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        WorkflowScheme existing = new WorkflowScheme(projectId, "Default Workflow");
+        when(workflowSchemeRepository.findByProjectId(projectId)).thenReturn(Optional.of(existing));
+        WorkflowStatus todo = new WorkflowStatus(existing, "To Do", StatusCategory.TODO, 0);
+        WorkflowStatus inProgress = new WorkflowStatus(existing, "In Progress", StatusCategory.IN_PROGRESS, 1);
+        WorkflowStatus done = new WorkflowStatus(existing, "Done", StatusCategory.DONE, 2);
+        when(workflowStatusRepository.findAllByWorkflowSchemeIdOrderBySortOrderAsc(any()))
+                .thenReturn(List.of(todo, inProgress, done));
+        when(workflowStatusRepository.save(any(WorkflowStatus.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        WorkflowSchemeResponse result = workflowService.getSchemeForProject(callerId, "TRK");
+
+        assertThat(result.statuses()).hasSize(4);
+        assertThat(result.statuses().get(0).name()).isEqualTo("To Do");
+        assertThat(result.statuses().get(0).sortOrder()).isEqualTo(0);
+        assertThat(result.statuses().get(1).name()).isEqualTo("Blocked");
+        assertThat(result.statuses().get(1).category()).isEqualTo(StatusCategory.BLOCKED);
+        assertThat(result.statuses().get(1).sortOrder()).isEqualTo(1);
+        assertThat(result.statuses().get(2).name()).isEqualTo("In Progress");
+        assertThat(result.statuses().get(2).sortOrder()).isEqualTo(2);
+        assertThat(result.statuses().get(3).name()).isEqualTo("Done");
+        assertThat(result.statuses().get(3).sortOrder()).isEqualTo(3);
+        verify(workflowStatusRepository, times(1)).save(any(WorkflowStatus.class));
         verify(workflowSchemeRepository, never()).save(any());
     }
 

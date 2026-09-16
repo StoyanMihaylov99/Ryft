@@ -110,10 +110,11 @@ class BoardControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         BoardResponse board = objectMapper.readValue(boardResult.getResponse().getContentAsString(), BoardResponse.class);
-        assertThat(board.columns()).hasSize(3);
+        assertThat(board.columns()).hasSize(4);
         assertThat(board.columns().get(0).category()).isEqualTo(StatusCategory.TODO);
         assertThat(board.columns().get(0).issues()).extracting("key").containsExactly(issue.key());
-        assertThat(board.columns().get(2).issues()).isEmpty();
+        assertThat(board.columns().get(1).category()).isEqualTo(StatusCategory.BLOCKED);
+        assertThat(board.columns().get(3).issues()).isEmpty();
 
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
@@ -128,7 +129,7 @@ class BoardControllerIT extends AbstractIntegrationTest {
         BoardResponse movedBoard = objectMapper.readValue(movedBoardResult.getResponse().getContentAsString(),
                 BoardResponse.class);
         assertThat(movedBoard.columns().get(0).issues()).isEmpty();
-        assertThat(movedBoard.columns().get(2).issues()).extracting("key").containsExactly(issue.key());
+        assertThat(movedBoard.columns().get(3).issues()).extracting("key").containsExactly(issue.key());
     }
 
     @Test

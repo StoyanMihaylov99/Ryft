@@ -106,7 +106,9 @@
     <div class="board">
       @for (column of boardValue.columns; track column.statusId) {
         <div class="column">
-          <h2>{{ column.name }} <span class="count">{{ column.issues.length }}</span></h2>
+          <h2 [class.blocked]="column.category === 'BLOCKED'">
+            {{ column.name }} <span class="count">{{ column.issues.length }}</span>
+          </h2>
           <div
             cdkDropList
             [id]="columnListId(column)"

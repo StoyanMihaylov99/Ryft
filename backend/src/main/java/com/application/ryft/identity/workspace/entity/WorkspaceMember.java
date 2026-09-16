@@ -39,8 +39,9 @@ public class WorkspaceMember {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "workspace_role", nullable = false)
+    @Column(name = "workspace_role", nullable = false, columnDefinition = "varchar(32)")
     @Setter
     private WorkspaceRole role;
 

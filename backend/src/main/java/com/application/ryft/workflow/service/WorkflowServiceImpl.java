@@ -8,6 +8,8 @@ import com.application.ryft.workflow.entity.WorkflowScheme;
 import com.application.ryft.workflow.entity.WorkflowStatus;
 import com.application.ryft.workflow.repository.WorkflowSchemeRepository;
 import com.application.ryft.workflow.repository.WorkflowStatusRepository;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -35,6 +37,7 @@ public class WorkflowServiceImpl implements WorkflowService {
                 .orElseGet(() -> createDefaultScheme(project.id()));
         List<WorkflowStatus> statuses = workflowStatusRepository
                 .findAllByWorkflowSchemeIdOrderBySortOrderAsc(scheme.getId());
+        statuses = backfillBlockedStatusIfMissing(scheme, statuses);
         return toResponse(scheme, statuses);
     }
 
@@ -48,9 +51,32 @@ public class WorkflowServiceImpl implements WorkflowService {
     private WorkflowScheme createDefaultScheme(UUID projectId) {
         WorkflowScheme scheme = workflowSchemeRepository.save(new WorkflowScheme(projectId, "Default Workflow"));
         workflowStatusRepository.save(new WorkflowStatus(scheme, "To Do", StatusCategory.TODO, 0));
-        workflowStatusRepository.save(new WorkflowStatus(scheme, "In Progress", StatusCategory.IN_PROGRESS, 1));
-        workflowStatusRepository.save(new WorkflowStatus(scheme, "Done", StatusCategory.DONE, 2));
+        workflowStatusRepository.save(new WorkflowStatus(scheme, "Blocked", StatusCategory.BLOCKED, 1));
+        workflowStatusRepository.save(new WorkflowStatus(scheme, "In Progress", StatusCategory.IN_PROGRESS, 2));
+        workflowStatusRepository.save(new WorkflowStatus(scheme, "Done", StatusCategory.DONE, 3));
         return scheme;
+    }
+
+    private List<WorkflowStatus> backfillBlockedStatusIfMissing(WorkflowScheme scheme, List<WorkflowStatus> statuses) {
+        if (statuses.stream().anyMatch(status -> status.getCategory() == StatusCategory.BLOCKED)) {
+            return statuses;
+        }
+        int insertAt = statuses.stream()
+                .filter(status -> status.getCategory() == StatusCategory.IN_PROGRESS)
+                .mapToInt(WorkflowStatus::getSortOrder)
+                .findFirst()
+                .orElse(statuses.size());
+
+        List<WorkflowStatus> updated = new ArrayList<>(statuses.size() + 1);
+        for (WorkflowStatus status : statuses) {
+            if (status.getSortOrder() >= insertAt) {
+                status.setSortOrder(status.getSortOrder() + 1);
+            }
+            updated.add(status);
+        }
+        updated.add(workflowStatusRepository.save(new WorkflowStatus(scheme, "Blocked", StatusCategory.BLOCKED, insertAt)));
+        updated.sort(Comparator.comparingInt(WorkflowStatus::getSortOrder));
+        return updated;
     }
 
     private WorkflowSchemeResponse toResponse(WorkflowScheme scheme, List<WorkflowStatus> statuses) {

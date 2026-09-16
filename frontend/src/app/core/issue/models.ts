@@ -1,5 +1,5 @@
 export type IssueType = 'STORY' | 'TASK' | 'BUG';
-export type IssueStatus = 'TODO' | 'IN_PROGRESS' | 'DONE';
+export type IssueStatus = 'TODO' | 'BLOCKED' | 'IN_PROGRESS' | 'DONE';
 export type IssuePriority = 'LOWEST' | 'LOW' | 'MEDIUM' | 'HIGH' | 'HIGHEST';
 
 export interface Issue {

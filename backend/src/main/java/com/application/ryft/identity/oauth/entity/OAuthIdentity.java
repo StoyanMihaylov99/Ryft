@@ -36,7 +36,7 @@ public class OAuthIdentity {
     private User user;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     private OAuthProvider provider;
 
     @Column(name = "provider_user_id", nullable = false)

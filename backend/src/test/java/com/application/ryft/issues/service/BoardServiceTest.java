@@ -52,8 +52,9 @@ class BoardServiceTest {
     private WorkflowSchemeResponse defaultScheme() {
         return new WorkflowSchemeResponse(UUID.randomUUID(), projectId, "Default Workflow", List.of(
                 new WorkflowStatusResponse(UUID.randomUUID(), "To Do", StatusCategory.TODO, 0),
-                new WorkflowStatusResponse(UUID.randomUUID(), "In Progress", StatusCategory.IN_PROGRESS, 1),
-                new WorkflowStatusResponse(UUID.randomUUID(), "Done", StatusCategory.DONE, 2)));
+                new WorkflowStatusResponse(UUID.randomUUID(), "Blocked", StatusCategory.BLOCKED, 1),
+                new WorkflowStatusResponse(UUID.randomUUID(), "In Progress", StatusCategory.IN_PROGRESS, 2),
+                new WorkflowStatusResponse(UUID.randomUUID(), "Done", StatusCategory.DONE, 3)));
     }
 
     @Test
@@ -62,21 +63,27 @@ class BoardServiceTest {
         when(workflowService.getSchemeForProject(callerId, "TRK")).thenReturn(defaultScheme());
         Issue todoIssue = new Issue(projectId, "TRK-1", IssueType.TASK, "Todo issue", null, IssuePriority.MEDIUM,
                 null, callerId);
+        Issue blockedIssue = new Issue(projectId, "TRK-3", IssueType.TASK, "Blocked issue", null, IssuePriority.MEDIUM,
+                null, callerId);
+        blockedIssue.setStatus(IssueStatus.BLOCKED);
         Issue doneIssue = new Issue(projectId, "TRK-2", IssueType.BUG, "Done issue", null, IssuePriority.MEDIUM,
                 null, callerId);
         doneIssue.setStatus(IssueStatus.DONE);
-        when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId)).thenReturn(List.of(todoIssue, doneIssue));
+        when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId))
+                .thenReturn(List.of(todoIssue, blockedIssue, doneIssue));
 
         BoardResponse result = boardService.getBoard(callerId, "TRK");
 
         assertThat(result.projectKey()).isEqualTo("TRK");
-        assertThat(result.columns()).hasSize(3);
+        assertThat(result.columns()).hasSize(4);
         assertThat(result.columns().get(0).category()).isEqualTo(StatusCategory.TODO);
         assertThat(result.columns().get(0).issues()).extracting("key").containsExactly("TRK-1");
-        assertThat(result.columns().get(1).category()).isEqualTo(StatusCategory.IN_PROGRESS);
-        assertThat(result.columns().get(1).issues()).isEmpty();
-        assertThat(result.columns().get(2).category()).isEqualTo(StatusCategory.DONE);
-        assertThat(result.columns().get(2).issues()).extracting("key").containsExactly("TRK-2");
+        assertThat(result.columns().get(1).category()).isEqualTo(StatusCategory.BLOCKED);
+        assertThat(result.columns().get(1).issues()).extracting("key").containsExactly("TRK-3");
+        assertThat(result.columns().get(2).category()).isEqualTo(StatusCategory.IN_PROGRESS);
+        assertThat(result.columns().get(2).issues()).isEmpty();
+        assertThat(result.columns().get(3).category()).isEqualTo(StatusCategory.DONE);
+        assertThat(result.columns().get(3).issues()).extracting("key").containsExactly("TRK-2");
     }
 
     @Test

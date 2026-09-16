@@ -13,6 +13,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.UuidGenerator;
 
 /** Same-module relation to WorkflowScheme — a real JPA relation is fine here, unlike cross-module ids. */
@@ -34,11 +35,12 @@ public class WorkflowStatus {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "varchar(32)")
     private StatusCategory category;
 
     /** Board column ordering. "order" is a reserved SQL keyword, hence "sort_order". */
     @Column(name = "sort_order", nullable = false)
+    @Setter
     private int sortOrder;
 
     public WorkflowStatus(WorkflowScheme workflowScheme, String name, StatusCategory category, int sortOrder) {

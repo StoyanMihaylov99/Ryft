@@ -38,8 +38,9 @@ public class ProjectMember {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
+    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
-    @Column(name = "role", nullable = false)
+    @Column(name = "role", nullable = false, columnDefinition = "varchar(32)")
     @Setter
     private ProjectRole role;
 

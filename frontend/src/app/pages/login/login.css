@@ -25,31 +25,21 @@
 
 .brand {
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
   margin-bottom: 1.75rem;
 }
 
-.brand-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  background: linear-gradient(155deg, var(--accent-hover), var(--accent));
-  color: var(--accent-text);
-  font-size: 0.875rem;
-  font-weight: 700;
-  box-shadow: var(--shadow-sm);
+/*
+ * logo-full.png is a fixed near-black glyph+wordmark on a transparent PNG — there's no
+ * light-on-dark variant of the asset — so on the dark theme it's inverted to white via CSS
+ * filter instead. The light theme shows the PNG's own dark ink unmodified.
+ */
+.brand-logo {
+  display: block;
+  filter: invert(1);
 }
 
-h1 {
-  margin: 0;
-  font-size: 1.375rem;
-  font-weight: 650;
-  color: var(--text);
-  letter-spacing: -0.02em;
+:root[data-theme='light'] .brand-logo {
+  filter: none;
 }
 
 .tabs {

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="icon.png" alt="Ryft" width="320">
+</p>
+
 # Ryft
 
 A self-hosted, Jira-style project management and issue tracking tool:
@@ -310,7 +314,7 @@ matching port:
 
 ```bash
 cd backend
-DB_PORT=5433 ./mvnw spring-boot:run
+./mvnw spring-boot:run
 ```
 
 (Omit `DB_PORT` — or set it back to 5432 in both `docker-compose.yml` and
