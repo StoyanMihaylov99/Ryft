@@ -1,32 +1,47 @@
 <div class="panel-backdrop" (click)="close()">
-  <aside class="panel" (click)="$event.stopPropagation()">
+  <aside
+    class="panel"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="issue-panel-title"
+    cdkTrapFocus
+    cdkTrapFocusAutoCapture
+    (click)="$event.stopPropagation()"
+  >
     <button type="button" class="close-btn" (click)="close()" aria-label="Close">&times;</button>
 
     @if (loading()) {
       <p class="empty-state">Loading…</p>
     } @else if (!issue()) {
-      <div class="banner">{{ errorMessage() }}</div>
+      <div class="banner" role="alert">{{ errorMessage() }}</div>
     } @else if (issue(); as issue) {
       <div class="panel-header">
+        <h2 id="issue-panel-title" class="visually-hidden">{{ issue.key }}: {{ issue.title }}</h2>
         <span class="issue-key">{{ issue.key }}</span>
         <span class="issue-type">{{ issue.type }}</span>
       </div>
 
       @if (errorMessage()) {
-        <div class="banner">{{ errorMessage() }}</div>
+        <div class="banner" role="alert">{{ errorMessage() }}</div>
       }
 
       <input
         class="title-input"
-        [value]="issue.title"
+        [value]="draftTitle()"
         [disabled]="!canManage()"
-        (blur)="saveTitle($any($event.target).value)"
+        [attr.title]="canManage() ? null : 'Only Owners and Admins can edit this'"
+        [attr.aria-invalid]="canManage() && titleIsBlank() ? true : null"
+        [attr.aria-describedby]="canManage() && titleIsBlank() ? 'title-error' : null"
+        (input)="updateDraftTitle($any($event.target).value)"
       />
+      @if (canManage() && titleIsBlank()) {
+        <p id="title-error" class="field-error" role="alert">Title cannot be empty</p>
+      }
 
       <div class="field-row">
         <label>
           Status
-          <select [value]="issue.status" (change)="changeStatus($any($event.target).value)">
+          <select [value]="draftStatus()" (change)="updateDraftStatus($any($event.target).value)">
             <option value="TODO">To Do</option>
             <option value="BLOCKED">Blocked</option>
             <option value="IN_PROGRESS">In Progress</option>
@@ -35,7 +50,7 @@
         </label>
         <label>
           Priority
-          <select [value]="issue.priority" [disabled]="!canManage()" (change)="changePriority($any($event.target).value)">
+          <select [value]="draftPriority()" [disabled]="!canManage()" (change)="updateDraftPriority($any($event.target).value)">
             <option value="LOWEST">Lowest</option>
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
@@ -49,16 +64,18 @@
         Description
         <textarea
           rows="5"
-          [value]="issue.description ?? ''"
+          [value]="draftDescription()"
           [disabled]="!canManage()"
-          (blur)="saveDescription($any($event.target).value)"
+          (input)="updateDraftDescription($any($event.target).value)"
           placeholder="Add a description…"
         ></textarea>
       </label>
 
-      @if (canManage()) {
-        <button type="button" class="delete-btn" (click)="deleteIssue()">Delete issue</button>
-      }
+      <div class="save-row">
+        <button type="button" class="save-btn" [disabled]="saving()" (click)="save()">
+          {{ saving() ? 'Saving…' : 'Save' }}
+        </button>
+      </div>
 
       <div class="comments">
         <h3>Comments</h3>
@@ -75,12 +92,29 @@
                 <button type="button" (click)="cancelEditComment()">Cancel</button>
               </div>
             } @else {
+              <p class="comment-meta">
+                <span class="comment-author">{{ comment.authorDisplayName ?? 'Unknown user' }}</span>
+                <span class="comment-timestamp">
+                  {{ comment.createdAt | date: "MMM d, y, h:mm a" }}
+                  @if (comment.updatedAt) {
+                    (edited)
+                  }
+                </span>
+              </p>
               <p class="comment-body">{{ comment.body }}</p>
               @if (comment.authorId === currentUserId()) {
-                <div class="comment-actions">
-                  <button type="button" (click)="startEditComment(comment)">Edit</button>
-                  <button type="button" (click)="deleteComment(comment.id)">Delete</button>
-                </div>
+                @if (confirmingDeleteCommentId() === comment.id) {
+                  <div class="comment-actions" role="alertdialog" aria-label="Confirm delete comment">
+                    <span class="confirm-text">Delete this comment?</span>
+                    <button type="button" (click)="deleteComment(comment.id)">Delete</button>
+                    <button type="button" autofocus (click)="cancelDeleteComment()">Cancel</button>
+                  </div>
+                } @else {
+                  <div class="comment-actions">
+                    <button type="button" (click)="startEditComment(comment)">Edit</button>
+                    <button type="button" (click)="requestDeleteComment(comment.id)">Delete</button>
+                  </div>
+                }
               }
             }
           </div>
@@ -95,9 +129,24 @@
             [value]="newCommentBody()"
             (input)="newCommentBody.set($any($event.target).value)"
           ></textarea>
-          <button type="button" [disabled]="postingComment()" (click)="submitComment()">
-            {{ postingComment() ? 'Posting…' : 'Comment' }}
-          </button>
+          <div class="new-comment-row">
+            <button type="button" class="comment-btn" [disabled]="postingComment()" (click)="submitComment()">
+              {{ postingComment() ? 'Posting…' : 'Comment' }}
+            </button>
+            @if (canManage() && !confirmingDeleteIssue()) {
+              <button type="button" class="delete-btn" (click)="requestDeleteIssue()">Delete issue</button>
+            }
+          </div>
+
+          @if (canManage() && confirmingDeleteIssue()) {
+            <div class="confirm-box" role="alertdialog" aria-label="Confirm delete issue">
+              <p>Delete {{ issue.key }}? This cannot be undone.</p>
+              <div class="confirm-actions">
+                <button type="button" class="delete-btn" (click)="deleteIssue()">Delete issue</button>
+                <button type="button" class="cancel-btn" autofocus (click)="cancelDeleteIssue()">Cancel</button>
+              </div>
+            </div>
+          }
         </div>
       </div>
     }

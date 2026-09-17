@@ -12,9 +12,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 @Entity
@@ -37,14 +35,13 @@ public class Comment {
     private UUID authorId;
 
     @Column(nullable = false)
-    @Setter
     private String body;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    @UpdateTimestamp
+    /** Null until the first edit; {@code @UpdateTimestamp} would stamp this on insert too, breaking "(edited)" detection. */
     @Column(name = "updated_at")
     private Instant updatedAt;
 
@@ -52,5 +49,10 @@ public class Comment {
         this.issue = issue;
         this.authorId = authorId;
         this.body = body;
+    }
+
+    public void editBody(String body) {
+        this.body = body;
+        this.updatedAt = Instant.now();
     }
 }

@@ -1,4 +1,8 @@
-import { Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
+import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
+import { A11yModule } from '@angular/cdk/a11y';
+import { EMPTY, Observable, of } from 'rxjs';
+import { catchError, switchMap } from 'rxjs/operators';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Comment } from '../../../core/comment/models';
 import { CommentService } from '../../../core/comment/comment.service';
@@ -6,7 +10,7 @@ import { Issue, IssuePriority, IssueStatus, UpdateIssueRequest } from '../../../
 import { IssueService } from '../../../core/issue/issue.service';
 
 @Component({
-  imports: [],
+  imports: [DatePipe, A11yModule],
   selector: 'app-issue-detail-panel',
   templateUrl: './issue-detail-panel.html',
   styleUrl: './issue-detail-panel.css',
@@ -32,8 +36,27 @@ export class IssueDetailPanel {
   readonly postingComment = signal(false);
   readonly editingCommentId = signal<string | null>(null);
   readonly editingCommentBody = signal('');
+  readonly confirmingDeleteIssue = signal(false);
+  readonly confirmingDeleteCommentId = signal<string | null>(null);
+
+  /** Staged edits for title/status/priority/description — not sent until save() is called. */
+  readonly draftTitle = signal('');
+  readonly draftDescription = signal('');
+  readonly draftPriority = signal<IssuePriority>('MEDIUM');
+  readonly draftStatus = signal<IssueStatus>('TODO');
+  readonly saving = signal(false);
 
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
+
+  readonly hasUnsavedChanges = computed(() => {
+    const issue = this.issue();
+    if (!issue) {
+      return false;
+    }
+    return this.buildPatchRequest(issue) !== null || this.draftStatus() !== issue.status;
+  });
+
+  readonly titleIsBlank = computed(() => this.draftTitle().trim().length === 0);
 
   constructor() {
     effect(() => this.load(this.issueKey()));
@@ -47,6 +70,7 @@ export class IssueDetailPanel {
     this.issueService.get(issueKey).subscribe({
       next: (issue) => {
         this.issue.set(issue);
+        this.resetDraft(issue);
         this.loading.set(false);
       },
       error: () => {
@@ -59,71 +83,147 @@ export class IssueDetailPanel {
     });
   }
 
-  saveTitle(value: string): void {
-    const issue = this.issue();
-    const title = value.trim();
-    if (!this.canManage() || !issue || !title || title === issue.title) {
-      return;
-    }
-    this.patch({ title });
+  private resetDraft(issue: Issue): void {
+    this.draftTitle.set(issue.title);
+    this.draftDescription.set(issue.description ?? '');
+    this.draftPriority.set(issue.priority);
+    this.draftStatus.set(issue.status);
   }
 
-  saveDescription(value: string): void {
-    const issue = this.issue();
-    if (!this.canManage() || !issue) {
-      return;
-    }
-    this.patch({ description: value });
-  }
-
-  changePriority(priority: IssuePriority): void {
+  updateDraftTitle(value: string): void {
     if (!this.canManage()) {
       return;
     }
-    this.patch({ priority });
+    this.draftTitle.set(value);
   }
 
-  changeStatus(status: IssueStatus): void {
-    const issue = this.issue();
-    if (!issue) {
+  updateDraftDescription(value: string): void {
+    if (!this.canManage()) {
       return;
     }
-    this.issueService.changeStatus(issue.key, status).subscribe({
-      next: (updated) => {
-        this.issue.set(updated);
-        this.updated.emit(updated);
+    this.draftDescription.set(value);
+  }
+
+  updateDraftPriority(priority: IssuePriority): void {
+    if (!this.canManage()) {
+      return;
+    }
+    this.draftPriority.set(priority);
+  }
+
+  updateDraftStatus(status: IssueStatus): void {
+    this.draftStatus.set(status);
+  }
+
+  save(): void {
+    const issue = this.issue();
+    if (!issue || this.saving()) {
+      return;
+    }
+    const patchRequest = this.buildPatchRequest(issue);
+    const status = this.draftStatus();
+    const statusChanged = status !== issue.status;
+    if (!patchRequest && !statusChanged) {
+      return;
+    }
+
+    const savingKey = this.issueKey();
+    this.saving.set(true);
+    this.errorMessage.set(null);
+
+    const patched$: Observable<Issue> = patchRequest ? this.issueService.update(issue.key, patchRequest) : of(issue);
+    const saved$: Observable<Issue> = patched$.pipe(
+      switchMap((patched) => {
+        if (!statusChanged) {
+          return of(patched);
+        }
+        return this.issueService.changeStatus(issue.key, status).pipe(
+          catchError(() => {
+            this.saving.set(false);
+            if (this.issueKey() === savingKey) {
+              // The PATCH already succeeded server-side, so reflect it locally even though the
+              // status change failed — otherwise local state would diverge from the server.
+              this.issue.set(patched);
+              this.resetDraft(patched);
+              this.draftStatus.set(status);
+              this.errorMessage.set(
+                patchRequest ? 'Status change failed; other changes were saved.' : 'Failed to change status.',
+              );
+            }
+            return EMPTY;
+          }),
+        );
+      }),
+    );
+
+    saved$.subscribe({
+      next: (saved) => {
+        this.saving.set(false);
+        if (this.issueKey() !== savingKey) {
+          return;
+        }
+        this.issue.set(saved);
+        this.resetDraft(saved);
+        this.updated.emit(saved);
       },
-      error: () => this.errorMessage.set('Failed to change the status.'),
+      error: () => {
+        this.saving.set(false);
+        if (this.issueKey() !== savingKey) {
+          return;
+        }
+        this.errorMessage.set('Failed to save changes.');
+      },
     });
   }
 
-  private patch(request: UpdateIssueRequest): void {
-    const issue = this.issue();
-    if (!issue) {
-      return;
+  /** Returns only the managed fields that differ from the loaded issue, or null if none/not allowed. */
+  private buildPatchRequest(issue: Issue): UpdateIssueRequest | null {
+    if (!this.canManage()) {
+      return null;
     }
-    this.issueService.update(issue.key, request).subscribe({
-      next: (updated) => {
-        this.issue.set(updated);
-        this.updated.emit(updated);
-      },
-      error: () => this.errorMessage.set('Failed to save changes.'),
-    });
+    const request: UpdateIssueRequest = {};
+    const title = this.draftTitle().trim();
+    if (title && title !== issue.title) {
+      request.title = title;
+    }
+    if (this.draftDescription() !== (issue.description ?? '')) {
+      request.description = this.draftDescription();
+    }
+    if (this.draftPriority() !== issue.priority) {
+      request.priority = this.draftPriority();
+    }
+    return Object.keys(request).length > 0 ? request : null;
+  }
+
+  requestDeleteIssue(): void {
+    this.confirmingDeleteIssue.set(true);
+  }
+
+  cancelDeleteIssue(): void {
+    this.confirmingDeleteIssue.set(false);
   }
 
   deleteIssue(): void {
     const issue = this.issue();
-    if (!this.canManage() || !issue || !confirm(`Delete ${issue.key}? This cannot be undone.`)) {
+    if (!this.canManage() || !issue) {
       return;
     }
     this.issueService.delete(issue.key).subscribe({
       next: () => this.deleted.emit(issue.key),
-      error: () => this.errorMessage.set('Failed to delete the issue.'),
+      error: () => {
+        this.confirmingDeleteIssue.set(false);
+        this.errorMessage.set('Failed to delete the issue.');
+      },
     });
   }
 
   close(): void {
     this.closed.emit();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.close();
   }
 
   submitComment(): void {
@@ -169,13 +269,21 @@ export class IssueDetailPanel {
     });
   }
 
+  requestDeleteComment(commentId: string): void {
+    this.confirmingDeleteCommentId.set(commentId);
+  }
+
+  cancelDeleteComment(): void {
+    this.confirmingDeleteCommentId.set(null);
+  }
+
   deleteComment(commentId: string): void {
-    if (!confirm('Delete this comment?')) {
-      return;
-    }
     this.commentService.delete(commentId).subscribe({
       next: () => this.comments.update((list) => list.filter((comment) => comment.id !== commentId)),
-      error: () => this.errorMessage.set('Failed to delete the comment.'),
+      error: () => {
+        this.confirmingDeleteCommentId.set(null);
+        this.errorMessage.set('Failed to delete the comment.');
+      },
     });
   }
 }

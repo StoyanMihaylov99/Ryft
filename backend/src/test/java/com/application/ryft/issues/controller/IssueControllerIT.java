@@ -14,6 +14,7 @@ import com.application.ryft.identity.user.repository.UserRepository;
 import com.application.ryft.identity.workspace.entity.Workspace;
 import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
+import com.application.ryft.issues.dto.CreateCommentRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -440,6 +441,37 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(delete("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteRemovesIssueWithExistingComments() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("A comment"))))
+                .andExpect(status().isCreated());
 
         mockMvc.perform(delete("/api/v1/issues/{issueKey}", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))

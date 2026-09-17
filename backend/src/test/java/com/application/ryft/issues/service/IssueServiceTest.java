@@ -20,6 +20,7 @@ import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
+import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
@@ -46,6 +47,9 @@ class IssueServiceTest {
     @Mock
     private IssueProjectAccess projectAccess;
 
+    @Mock
+    private CommentRepository commentRepository;
+
     private IssueServiceImpl issueService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -55,7 +59,8 @@ class IssueServiceTest {
 
     @BeforeEach
     void setUp() {
-        issueService = new IssueServiceImpl(issueRepository, issueKeySequenceRepository, projectAccess);
+        issueService = new IssueServiceImpl(issueRepository, issueKeySequenceRepository, projectAccess,
+                commentRepository);
     }
 
     @Test
@@ -264,6 +269,7 @@ class IssueServiceTest {
         ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
         verify(issueRepository).delete(captor.capture());
         assertThat(captor.getValue().getKey()).isEqualTo("TRK-1");
+        verify(commentRepository).deleteAllByIssueId(issue.getId());
     }
 
     @Test
@@ -276,6 +282,7 @@ class IssueServiceTest {
         assertThatThrownBy(() -> issueService.delete(callerId, "TRK-1"))
                 .isInstanceOf(InsufficientProjectRoleException.class);
         verify(issueRepository, never()).delete(any());
+        verify(commentRepository, never()).deleteAllByIssueId(any());
     }
 
     @Test
