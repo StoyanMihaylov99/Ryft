@@ -3,9 +3,12 @@ package com.application.ryft.identity.user.service;
 import com.application.ryft.identity.user.dto.UserResponse;
 import com.application.ryft.identity.user.repository.UserRepository;
 import com.application.ryft.identity.user.entity.User;
+import java.util.Collection;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,6 +30,12 @@ public class UserServiceImpl implements UserService {
     @Override
     public Optional<UserResponse> findByEmail(String email) {
         return userRepository.findByEmailIgnoreCase(email).map(UserServiceImpl::toResponse);
+    }
+
+    @Override
+    public Map<UUID, UserResponse> findAllByIds(Collection<UUID> userIds) {
+        return userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getId, UserServiceImpl::toResponse));
     }
 
     public static UserResponse toResponse(User user) {

@@ -21,19 +21,25 @@
 }
 
 /*
- * logo-full.png / logo-mark.png are a fixed near-black glyph+wordmark on a transparent PNG —
- * there's no light-on-dark variant of the asset — so on the dark theme they're inverted to white
- * via CSS filter instead. The light theme shows the PNG's own dark ink unmodified.
+ * logo-full.png / logo-mark.png's ink isn't pure black (it's a pale ~#d8d5d0 gray), so it's barely
+ * visible on light backgrounds and disappears on dark ones. `brightness(0)` first flattens it to
+ * solid black regardless of source color, then the dark theme inverts that to solid white.
  */
 .brand-logo-full,
 .brand-logo-mark {
   display: block;
-  filter: invert(1);
+  filter: brightness(0) invert(1);
 }
 
-:root[data-theme='light'] .brand-logo-full,
-:root[data-theme='light'] .brand-logo-mark {
-  filter: none;
+/*
+ * `:host-context()` (not `:root […]`) because Angular's emulated encapsulation appends the
+ * component's content attribute to *every* compound selector segment, including the leftmost one —
+ * `:root[data-theme='light'] .brand-logo-full` silently never matches once scoped, since `<html>`
+ * never carries the component's `_ngcontent-*` attribute. `:host-context` is compiled correctly.
+ */
+:host-context([data-theme='light']) .brand-logo-full,
+:host-context([data-theme='light']) .brand-logo-mark {
+  filter: brightness(0);
 }
 
 .brand-logo-mark {

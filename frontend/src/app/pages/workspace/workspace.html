@@ -11,22 +11,40 @@
         <p class="subtitle">You're the first one here — let's name your workspace to get started.</p>
 
         @if (errorMessage()) {
-          <div class="banner">{{ errorMessage() }}</div>
+          <div class="banner" role="alert">{{ errorMessage() }}</div>
         }
 
         <form [formGroup]="setupForm" (ngSubmit)="submitSetup()">
           <label>
             Workspace name
-            <input type="text" formControlName="name" autocomplete="off" placeholder="Acme Inc" />
+            <input
+              type="text"
+              formControlName="name"
+              autocomplete="off"
+              placeholder="Acme Inc"
+              [attr.aria-invalid]="setupForm.controls.name.invalid && setupForm.controls.name.touched"
+              [attr.aria-describedby]="
+                setupForm.controls.name.invalid && setupForm.controls.name.touched ? 'setup-name-error' : null
+              "
+            />
             @if (setupForm.controls.name.invalid && setupForm.controls.name.touched) {
-              <span class="field-error">Workspace name is required.</span>
+              <span id="setup-name-error" class="field-error">Workspace name is required.</span>
             }
           </label>
           <label>
             Workspace URL slug
-            <input type="text" formControlName="slug" autocomplete="off" placeholder="acme-inc" />
+            <input
+              type="text"
+              formControlName="slug"
+              autocomplete="off"
+              placeholder="acme-inc"
+              [attr.aria-invalid]="setupForm.controls.slug.invalid && setupForm.controls.slug.touched"
+              [attr.aria-describedby]="
+                setupForm.controls.slug.invalid && setupForm.controls.slug.touched ? 'setup-slug-error' : null
+              "
+            />
             @if (setupForm.controls.slug.invalid && setupForm.controls.slug.touched) {
-              <span class="field-error">Lowercase letters, digits and hyphens only.</span>
+              <span id="setup-slug-error" class="field-error">Lowercase letters, digits and hyphens only.</span>
             }
           </label>
           <button type="submit" class="submit" [disabled]="settingUp()">
@@ -36,7 +54,7 @@
       </div>
     </div>
   } @else if (errorMessage()) {
-    <div class="banner">{{ errorMessage() }}</div>
+    <div class="banner" role="alert">{{ errorMessage() }}</div>
   }
 
   @if (loading()) {
@@ -54,9 +72,9 @@
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
+              <th scope="col">Name</th>
+              <th scope="col">Email</th>
+              <th scope="col">Role</th>
             </tr>
           </thead>
           <tbody>
@@ -89,9 +107,19 @@
           <form class="invite" [formGroup]="inviteForm" (ngSubmit)="submitInvite()">
             <label>
               Email
-              <input type="email" formControlName="email" autocomplete="email" />
+              <input
+                type="email"
+                formControlName="email"
+                autocomplete="email"
+                [attr.aria-invalid]="inviteForm.controls.email.invalid && inviteForm.controls.email.touched"
+                [attr.aria-describedby]="
+                  inviteForm.controls.email.invalid && inviteForm.controls.email.touched
+                    ? 'workspace-invite-email-error'
+                    : null
+                "
+              />
               @if (inviteForm.controls.email.invalid && inviteForm.controls.email.touched) {
-                <span class="field-error">Enter a valid email address.</span>
+                <span id="workspace-invite-email-error" class="field-error">Enter a valid email address.</span>
               }
             </label>
             <label>

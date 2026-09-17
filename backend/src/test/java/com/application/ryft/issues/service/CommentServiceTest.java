@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.application.ryft.identity.user.dto.UserResponse;
+import com.application.ryft.identity.user.service.UserService;
 import com.application.ryft.issues.dto.CommentResponse;
 import com.application.ryft.issues.dto.CreateCommentRequest;
 import com.application.ryft.issues.dto.UpdateCommentRequest;
@@ -23,7 +25,9 @@ import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +47,9 @@ class CommentServiceTest {
     @Mock
     private IssueProjectAccess projectAccess;
 
+    @Mock
+    private UserService userService;
+
     private CommentServiceImpl commentService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -51,21 +58,26 @@ class CommentServiceTest {
             null, callerId);
     private final ProjectResponse project = new ProjectResponse(projectId, UUID.randomUUID(), "TRK", "Tracker", null,
             Instant.now(), null);
+    private final UserResponse caller = new UserResponse(callerId, "caller@example.com", "Caller Name",
+            "https://example.com/avatar.png");
 
     @BeforeEach
     void setUp() {
-        commentService = new CommentServiceImpl(commentRepository, issueRepository, projectAccess);
+        commentService = new CommentServiceImpl(commentRepository, issueRepository, projectAccess, userService);
     }
 
     @Test
     void createSavesCommentAuthoredByCaller() {
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(commentRepository.save(any(Comment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(commentRepository.saveAndFlush(any(Comment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userService.getById(callerId)).thenReturn(caller);
 
         CommentResponse result = commentService.create(callerId, "TRK-1", new CreateCommentRequest("Looks good"));
 
         assertThat(result.authorId()).isEqualTo(callerId);
+        assertThat(result.authorDisplayName()).isEqualTo("Caller Name");
+        assertThat(result.authorAvatarUrl()).isEqualTo("https://example.com/avatar.png");
         assertThat(result.body()).isEqualTo("Looks good");
     }
 
@@ -84,7 +96,7 @@ class CommentServiceTest {
 
         assertThatThrownBy(() -> commentService.create(callerId, "TRK-1", new CreateCommentRequest("Hi")))
                 .isInstanceOf(NotAProjectMemberException.class);
-        verify(commentRepository, never()).save(any());
+        verify(commentRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -93,11 +105,29 @@ class CommentServiceTest {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         Comment comment = new Comment(issue, callerId, "First");
         when(commentRepository.findAllByIssueIdOrderByCreatedAtAsc(issue.getId())).thenReturn(List.of(comment));
+        when(userService.findAllByIds(Set.of(callerId))).thenReturn(Map.of(callerId, caller));
 
         List<CommentResponse> result = commentService.listForIssue(callerId, "TRK-1");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).body()).isEqualTo("First");
+        assertThat(result.get(0).authorDisplayName()).isEqualTo("Caller Name");
+        assertThat(result.get(0).authorAvatarUrl()).isEqualTo("https://example.com/avatar.png");
+    }
+
+    @Test
+    void listForIssueOmitsAttributionWhenAuthorNoLongerResolves() {
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        Comment comment = new Comment(issue, callerId, "First");
+        when(commentRepository.findAllByIssueIdOrderByCreatedAtAsc(issue.getId())).thenReturn(List.of(comment));
+        when(userService.findAllByIds(Set.of(callerId))).thenReturn(Map.of());
+
+        List<CommentResponse> result = commentService.listForIssue(callerId, "TRK-1");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).authorDisplayName()).isNull();
+        assertThat(result.get(0).authorAvatarUrl()).isNull();
     }
 
     @Test
@@ -105,11 +135,13 @@ class CommentServiceTest {
         Comment comment = new Comment(issue, callerId, "Original");
         when(commentRepository.findById(any(UUID.class))).thenReturn(Optional.of(comment));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(userService.getById(callerId)).thenReturn(caller);
 
         CommentResponse result = commentService.update(callerId, UUID.randomUUID(),
                 new UpdateCommentRequest("Edited"));
 
         assertThat(result.body()).isEqualTo("Edited");
+        assertThat(result.authorDisplayName()).isEqualTo("Caller Name");
     }
 
     @Test

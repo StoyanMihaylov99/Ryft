@@ -11,6 +11,7 @@ import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
+import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
@@ -27,12 +28,14 @@ public class IssueServiceImpl implements IssueService {
     private final IssueRepository issueRepository;
     private final IssueKeySequenceRepository issueKeySequenceRepository;
     private final IssueProjectAccess projectAccess;
+    private final CommentRepository commentRepository;
 
     public IssueServiceImpl(IssueRepository issueRepository, IssueKeySequenceRepository issueKeySequenceRepository,
-            IssueProjectAccess projectAccess) {
+            IssueProjectAccess projectAccess, CommentRepository commentRepository) {
         this.issueRepository = issueRepository;
         this.issueKeySequenceRepository = issueKeySequenceRepository;
         this.projectAccess = projectAccess;
+        this.commentRepository = commentRepository;
     }
 
     @Override
@@ -135,6 +138,7 @@ public class IssueServiceImpl implements IssueService {
         String projectKey = projectKeyOf(issue);
         projectAccess.requireMembership(callerId, projectKey);
         requireOwnerOrAdmin(callerId, projectKey);
+        commentRepository.deleteAllByIssueId(issue.getId());
         issueRepository.delete(issue);
     }
 

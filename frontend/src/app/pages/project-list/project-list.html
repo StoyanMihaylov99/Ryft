@@ -10,7 +10,7 @@
       </div>
 
   @if (errorMessage()) {
-    <div class="banner">{{ errorMessage() }}</div>
+    <div class="banner" role="alert">{{ errorMessage() }}</div>
   }
 
   @if (showCreateForm()) {
@@ -19,16 +19,34 @@
       <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
         <label>
           Key
-          <input type="text" formControlName="key" placeholder="TRK" autocomplete="off" />
+          <input
+            type="text"
+            formControlName="key"
+            placeholder="TRK"
+            autocomplete="off"
+            [attr.aria-invalid]="createForm.controls.key.invalid && createForm.controls.key.touched"
+            [attr.aria-describedby]="
+              createForm.controls.key.invalid && createForm.controls.key.touched ? 'project-key-error' : null
+            "
+          />
           @if (createForm.controls.key.invalid && createForm.controls.key.touched) {
-            <span class="field-error">2–10 uppercase letters/digits, starting with a letter.</span>
+            <span id="project-key-error" class="field-error">2–10 uppercase letters/digits, starting with a letter.</span>
           }
         </label>
         <label>
           Name
-          <input type="text" formControlName="name" placeholder="Tracker" autocomplete="off" />
+          <input
+            type="text"
+            formControlName="name"
+            placeholder="Tracker"
+            autocomplete="off"
+            [attr.aria-invalid]="createForm.controls.name.invalid && createForm.controls.name.touched"
+            [attr.aria-describedby]="
+              createForm.controls.name.invalid && createForm.controls.name.touched ? 'project-name-error' : null
+            "
+          />
           @if (createForm.controls.name.invalid && createForm.controls.name.touched) {
-            <span class="field-error">Project name is required.</span>
+            <span id="project-name-error" class="field-error">Project name is required.</span>
           }
         </label>
         <label>

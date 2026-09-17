@@ -10,6 +10,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
@@ -273,6 +275,29 @@ h1 {
   align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 1rem;
+  /*
+   * Pure-CSS "scroll shadow": a fade at each edge that's masked out (via the `local`-attached
+   * layers, which scroll with the content) once that edge is fully scrolled into view, so it only
+   * ever hints at content that's actually still off-screen.
+   */
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(to right, var(--bg) 30%, transparent),
+    linear-gradient(to left, var(--bg) 30%, transparent),
+    linear-gradient(to right, var(--shadow) 0%, transparent 70%),
+    linear-gradient(to left, var(--shadow) 0%, transparent 70%);
+  background-position:
+    left top,
+    right top,
+    left top,
+    right top;
+  background-size:
+    40px 100%,
+    40px 100%,
+    14px 100%,
+    14px 100%;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
 }
 
 .column {
@@ -302,7 +327,41 @@ h1 {
 .column h2 .count {
   color: var(--text-tertiary);
   font-weight: 500;
-  opacity: 0.7;
+}
+
+.column-empty {
+  margin: 0.25rem 0.25rem;
+  padding: 0.75rem 0;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.empty-cta {
+  display: block;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0.125rem 0;
+}
+
+.empty-cta:hover {
+  color: var(--accent-hover);
+}
+
+@media (max-width: 640px) {
+  .board-page {
+    padding: 1.25rem 1rem;
+  }
+
+  .column {
+    flex: 0 0 85vw;
+    max-width: none;
+  }
 }
 
 .issue-list {
@@ -316,11 +375,16 @@ h1 {
 .issue-card {
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 0.375rem;
+  width: 100%;
   padding: 0.75rem 0.875rem;
   border-radius: 8px;
   background: var(--bg);
   border: 1px solid var(--border-subtle);
+  font: inherit;
+  text-align: left;
+  color: inherit;
   cursor: pointer;
 }
 
@@ -330,10 +394,28 @@ h1 {
   transform: translateY(-1px);
 }
 
+.issue-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .issue-key {
   font-size: 0.6875rem;
   font-weight: 600;
   color: var(--text-tertiary);
+}
+
+.issue-type-badge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated-2);
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
 }
 
 .issue-title {

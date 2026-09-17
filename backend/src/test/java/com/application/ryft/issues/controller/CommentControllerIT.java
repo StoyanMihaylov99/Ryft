@@ -122,6 +122,7 @@ class CommentControllerIT extends AbstractIntegrationTest {
         CommentResponse comment = objectMapper.readValue(result.getResponse().getContentAsString(), CommentResponse.class);
         assertThat(comment.body()).isEqualTo("First comment");
         assertThat(comment.authorId()).isEqualTo(userOf(email).getId());
+        assertThat(comment.authorDisplayName()).isEqualTo(userOf(email).getDisplayName());
     }
 
     @Test
@@ -182,6 +183,39 @@ class CommentControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void listResolvesDisplayNameForEachDistinctAuthor() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+        String issueKey = createIssue(key, ownerToken);
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        addMembership(project, userOf(memberEmail), ProjectRole.MEMBER);
+
+        mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("From owner"))))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("From member"))))
+                .andExpect(status().isCreated());
+
+        MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andReturn();
+        CommentResponse[] comments = objectMapper.readValue(result.getResponse().getContentAsString(), CommentResponse[].class);
+        assertThat(comments).hasSize(2);
+        assertThat(comments[0].authorDisplayName()).isEqualTo(userOf(ownerEmail).getDisplayName());
+        assertThat(comments[1].authorDisplayName()).isEqualTo(userOf(memberEmail).getDisplayName());
+    }
+
+    @Test
     void authorCanEditTheirOwnComment() throws Exception {
         String email = uniqueEmail();
         String token = registerAndGetToken(email);
@@ -205,6 +239,7 @@ class CommentControllerIT extends AbstractIntegrationTest {
                 .andReturn();
         CommentResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), CommentResponse.class);
         assertThat(result.body()).isEqualTo("Edited");
+        assertThat(result.authorDisplayName()).isEqualTo(userOf(email).getDisplayName());
     }
 
     @Test

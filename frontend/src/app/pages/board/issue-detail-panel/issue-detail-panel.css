@@ -25,9 +25,15 @@
 
 .close-btn {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   font-size: 1.375rem;
   line-height: 1;
@@ -36,6 +42,7 @@
 }
 
 .close-btn:hover {
+  background: var(--bg-elevated-2);
   color: var(--text);
 }
 
@@ -92,6 +99,12 @@
   cursor: default;
 }
 
+.field-error {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
 .field-row {
   display: flex;
   gap: 1rem;
@@ -136,6 +149,33 @@ textarea:disabled {
   margin-bottom: 1.25rem;
 }
 
+.save-row {
+  margin-bottom: 1.25rem;
+}
+
+.save-btn {
+  padding: 0.4375rem 0.875rem;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.save-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .delete-btn {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--danger);
@@ -144,11 +184,49 @@ textarea:disabled {
   color: var(--danger);
   font-size: 0.8125rem;
   cursor: pointer;
-  margin-bottom: 1.75rem;
 }
 
 .delete-btn:hover {
   background: var(--danger-bg);
+}
+
+.confirm-box {
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  margin-bottom: 1.75rem;
+}
+
+.confirm-box p {
+  margin: 0 0 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.cancel-btn {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+/* var(--border) is too low-contrast against the reddish .confirm-box background */
+.confirm-box .cancel-btn {
+  border-color: var(--text-secondary);
+}
+
+.cancel-btn:hover {
+  background: var(--bg-elevated-2);
 }
 
 .comments h3 {
@@ -163,6 +241,23 @@ textarea:disabled {
   border-top: 1px solid var(--border-subtle);
 }
 
+.comment-meta {
+  margin: 0 0 0.25rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.comment-author {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.comment-timestamp {
+  color: var(--text-tertiary);
+}
+
 .comment-body {
   margin: 0;
   font-size: 0.8125rem;
@@ -173,21 +268,31 @@ textarea:disabled {
 
 .comment-actions {
   display: flex;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.confirm-text {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
 }
 
 .comment-actions button {
   border: none;
+  border-radius: 4px;
   background: transparent;
   color: var(--text-tertiary);
   font-size: 0.75rem;
   cursor: pointer;
-  padding: 0;
+  /* Padding brings the ~15x21px hit area up to the 24x24px touch-target minimum. */
+  padding: 0.25rem 0.375rem;
+  margin: -0.25rem -0.375rem;
 }
 
 .comment-actions button:hover {
   color: var(--accent);
+  background: var(--bg-elevated-2);
 }
 
 .new-comment {
@@ -197,8 +302,13 @@ textarea:disabled {
   gap: 0.625rem;
 }
 
-.new-comment button {
-  align-self: flex-start;
+.new-comment-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.comment-btn {
   padding: 0.4375rem 0.75rem;
   border: none;
   border-radius: 7px;
@@ -210,13 +320,13 @@ textarea:disabled {
   box-shadow: var(--shadow-sm);
 }
 
-.new-comment button:hover:not(:disabled) {
+.comment-btn:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }
 
-.new-comment button:disabled {
+.comment-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
