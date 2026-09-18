@@ -6,6 +6,9 @@ import { Workspace } from './pages/workspace/workspace';
 import { ProjectList } from './pages/project-list/project-list';
 import { Project } from './pages/project/project';
 import { Board } from './pages/board/board';
+import { Sprints } from './pages/sprints/sprints';
+import { Backlog } from './pages/backlog/backlog';
+import { SprintBoard } from './pages/sprint-board/sprint-board';
 
 export const routes: Routes = [
   { path: 'login', component: Login },
@@ -15,6 +18,9 @@ export const routes: Routes = [
   { path: 'workspace', component: Workspace, canActivate: [authGuard] },
   { path: 'projects', component: ProjectList, canActivate: [authGuard] },
   { path: 'projects/:projectKey/board', component: Board, canActivate: [authGuard] },
+  { path: 'projects/:projectKey/sprints', component: Sprints, canActivate: [authGuard] },
+  { path: 'projects/:projectKey/backlog', component: Backlog, canActivate: [authGuard] },
+  { path: 'projects/:projectKey/sprint-board', component: SprintBoard, canActivate: [authGuard] },
   { path: 'projects/:projectKey', component: Project, canActivate: [authGuard] },
   { path: '', redirectTo: 'login', pathMatch: 'full' },
 ];

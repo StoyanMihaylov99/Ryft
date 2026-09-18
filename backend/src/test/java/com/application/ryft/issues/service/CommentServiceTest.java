@@ -55,7 +55,7 @@ class CommentServiceTest {
     private final UUID callerId = UUID.randomUUID();
     private final UUID projectId = UUID.randomUUID();
     private final Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM,
-            null, callerId);
+            null, callerId, 1000.0);
     private final ProjectResponse project = new ProjectResponse(projectId, UUID.randomUUID(), "TRK", "Tracker", null,
             Instant.now(), null);
     private final UserResponse caller = new UserResponse(callerId, "caller@example.com", "Caller Name",

@@ -2,6 +2,7 @@ package com.application.ryft.issues.controller;
 
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.IssueResponse;
+import com.application.ryft.issues.dto.ReorderBacklogIssueRequest;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.service.IssueService;
 import jakarta.validation.Valid;
@@ -43,6 +44,13 @@ public class IssueController {
     public ResponseEntity<IssueResponse> updateStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable String issueKey,
             @Valid @RequestBody ChangeIssueStatusRequest request) {
         return ResponseEntity.ok(issueService.changeStatus(callerId(jwt), issueKey, request));
+    }
+
+    @PatchMapping("/{issueKey}/backlog-rank")
+    public ResponseEntity<IssueResponse> reorderBacklogRank(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable String issueKey, @Valid @RequestBody ReorderBacklogIssueRequest request) {
+        return ResponseEntity.ok(issueService.reorderBacklog(callerId(jwt), issueKey, request.beforeIssueKey(),
+                request.afterIssueKey()));
     }
 
     @DeleteMapping("/{issueKey}")

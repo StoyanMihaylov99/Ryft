@@ -8,8 +8,28 @@ import { CreateIssueRequest, Issue, IssueStatus, UpdateIssueRequest } from './mo
 export class IssueService {
   private readonly http = inject(HttpClient);
 
-  listForProject(projectKey: string): Observable<Issue[]> {
-    return this.http.get<Issue[]>(`${environment.apiBaseUrl}/projects/${projectKey}/issues`);
+  listForProject(projectKey: string, sprintId?: string): Observable<Issue[]> {
+    const url = `${environment.apiBaseUrl}/projects/${projectKey}/issues`;
+    return this.http.get<Issue[]>(sprintId ? `${url}?sprintId=${sprintId}` : url);
+  }
+
+  listBacklog(projectKey: string): Observable<Issue[]> {
+    return this.http.get<Issue[]>(`${environment.apiBaseUrl}/projects/${projectKey}/backlog`);
+  }
+
+  moveToSprint(issueKey: string, sprintId: string | null): Observable<Issue> {
+    return this.http.patch<Issue>(`${environment.apiBaseUrl}/issues/${issueKey}/sprint`, { sprintId });
+  }
+
+  reorderBacklog(
+    issueKey: string,
+    beforeIssueKey: string | null,
+    afterIssueKey: string | null,
+  ): Observable<Issue> {
+    return this.http.patch<Issue>(`${environment.apiBaseUrl}/issues/${issueKey}/backlog-rank`, {
+      beforeIssueKey,
+      afterIssueKey,
+    });
   }
 
   create(projectKey: string, request: CreateIssueRequest): Observable<Issue> {

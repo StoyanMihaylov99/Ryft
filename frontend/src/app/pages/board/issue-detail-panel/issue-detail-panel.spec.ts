@@ -17,11 +17,13 @@ function issue(overrides: Partial<Issue> = {}): Issue {
     description: null,
     status: 'TODO',
     priority: 'MEDIUM',
+    storyPoints: null,
     assigneeId: null,
     reporterId: 'u1',
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: null,
     resolvedAt: null,
+    sprintId: null,
     ...overrides,
   };
 }
@@ -174,6 +176,36 @@ describe('IssueDetailPanel', () => {
     req.flush(issue({ priority: 'HIGH' }));
 
     expect(component.issue()?.priority).toBe('HIGH');
+  });
+
+  it('saves the staged story points when Save is clicked and emits updated', () => {
+    fixture.componentRef.setInput('canManage', true);
+    flushLoad(issue());
+    const updatedSpy = vi.fn();
+    component.updated.subscribe(updatedSpy);
+
+    component.updateDraftStoryPoints(5);
+    component.save();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+    expect(req.request.body).toEqual({ storyPoints: 5 });
+    req.flush(issue({ storyPoints: 5 }));
+
+    expect(component.issue()?.storyPoints).toBe(5);
+    expect(updatedSpy).toHaveBeenCalled();
+  });
+
+  it('omits storyPoints from the patch when saving other fields without changing it', () => {
+    fixture.componentRef.setInput('canManage', true);
+    flushLoad(issue());
+
+    component.updateDraftPriority('HIGH');
+    component.save();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+    expect(req.request.body).toEqual({ priority: 'HIGH' });
+    expect(req.request.body.storyPoints).toBeUndefined();
+    req.flush(issue({ priority: 'HIGH' }));
   });
 
   it('shows an inline validation message when the title is blank', () => {
