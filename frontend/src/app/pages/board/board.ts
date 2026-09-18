@@ -10,10 +10,11 @@ import { ProjectMember, ProjectRole } from '../../core/project/models';
 import { ProjectService } from '../../core/project/project.service';
 import { Issue, IssueType } from '../../core/issue/models';
 import { IssueService } from '../../core/issue/issue.service';
+import { IssueCard } from '../../shared/issue-card/issue-card';
 import { IssueDetailPanel } from './issue-detail-panel/issue-detail-panel';
 
 @Component({
-  imports: [DragDropModule, ReactiveFormsModule, RouterLink, Sidebar, IssueDetailPanel],
+  imports: [DragDropModule, ReactiveFormsModule, RouterLink, Sidebar, IssueCard, IssueDetailPanel],
   selector: 'app-board',
   templateUrl: './board.html',
   styleUrl: './board.css',

@@ -129,6 +129,37 @@ class ProjectServiceTest {
     }
 
     @Test
+    void getByIdRequiresProjectToExist() {
+        UUID projectId = UUID.randomUUID();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectService.getById(callerId, projectId))
+                .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    void getByIdRequiresCallerToBeAMember() {
+        UUID projectId = project.getId();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(any(), eq(callerId))).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectService.getById(callerId, projectId))
+                .isInstanceOf(NotAProjectMemberException.class);
+    }
+
+    @Test
+    void getByIdReturnsProjectForMember() {
+        UUID projectId = project.getId();
+        when(projectRepository.findById(projectId)).thenReturn(Optional.of(project));
+        ProjectMember member = new ProjectMember(project, callerId, ProjectRole.MEMBER);
+        when(projectMemberRepository.findByProjectIdAndUserId(any(), eq(callerId))).thenReturn(Optional.of(member));
+
+        ProjectResponse result = projectService.getById(callerId, projectId);
+
+        assertThat(result.key()).isEqualTo("TRK");
+    }
+
+    @Test
     void updateByMemberIsRejected() {
         stubWorkspace();
         when(projectRepository.findByWorkspaceIdAndKey(workspaceId, "TRK")).thenReturn(Optional.of(project));
