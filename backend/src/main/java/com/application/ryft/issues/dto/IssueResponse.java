@@ -20,6 +20,7 @@ public record IssueResponse(
         UUID reporterId,
         UUID sprintId,
         Integer storyPoints,
+        UUID parentId,
         Instant createdAt,
         Instant updatedAt,
         Instant resolvedAt
@@ -29,6 +30,6 @@ public record IssueResponse(
         return new IssueResponse(issue.getId(), issue.getProjectId(), issue.getKey(), issue.getType(),
                 issue.getTitle(), issue.getDescription(), issue.getStatus(), issue.getPriority(),
                 issue.getAssigneeId(), issue.getReporterId(), issue.getSprintId(), issue.getStoryPoints(),
-                issue.getCreatedAt(), issue.getUpdatedAt(), issue.getResolvedAt());
+                issue.getParentIssueId(), issue.getCreatedAt(), issue.getUpdatedAt(), issue.getResolvedAt());
     }
 }

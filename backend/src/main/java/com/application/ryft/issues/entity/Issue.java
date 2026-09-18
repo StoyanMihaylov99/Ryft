@@ -82,6 +82,15 @@ public class Issue {
     @Setter
     private double backlogRank;
 
+    /**
+     * Plain id, not a JPA relation (same pattern as sprintId/assigneeId — avoids self-join complexity).
+     * Doubles as the epic link (STORY/TASK/BUG -&gt; EPIC) and, later, the subtask parent link; which
+     * meaning applies is derived from the issue's own type, validated in IssueServiceImpl.
+     */
+    @Column(name = "parent_issue_id")
+    @Setter
+    private UUID parentIssueId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

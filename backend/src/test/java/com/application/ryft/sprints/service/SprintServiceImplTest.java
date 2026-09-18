@@ -187,7 +187,7 @@ class SprintServiceImplTest {
 
     private IssueResponse issue(Integer storyPoints, IssueStatus status) {
         return new IssueResponse(UUID.randomUUID(), projectId, "TRK-1", IssueType.TASK, "Title", null, status,
-                IssuePriority.MEDIUM, null, callerId, UUID.randomUUID(), storyPoints, Instant.now(), null, null);
+                IssuePriority.MEDIUM, null, callerId, UUID.randomUUID(), storyPoints, null, Instant.now(), null, null);
     }
 
     @Test

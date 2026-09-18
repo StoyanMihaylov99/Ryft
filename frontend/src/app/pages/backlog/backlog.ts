@@ -1,4 +1,9 @@
-import { CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
+import {
+  CdkDragDrop,
+  DragDropModule,
+  moveItemInArray,
+  transferArrayItem,
+} from '@angular/cdk/drag-drop';
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { forkJoin } from 'rxjs';
@@ -49,6 +54,15 @@ export class Backlog {
     this.backlogListId,
   ]);
 
+  /** Every EPIC currently loaded across sprint sections and the backlog — used to resolve each
+   *  card's "Epic: <title>" chip without an extra request. An epic that only lives in a completed
+   *  (unloaded) sprint won't resolve here; its cards simply show no chip. */
+  readonly epics = computed<Issue[]>(() =>
+    [...this.sections().flatMap((section) => section.issues), ...this.backlogIssues()].filter(
+      (issue) => issue.type === 'EPIC',
+    ),
+  );
+
   constructor() {
     this.load();
     this.loadMembers();
@@ -70,7 +84,9 @@ export class Backlog {
     this.errorMessage.set(null);
     this.sprintService.listForProject(this.projectKey).subscribe({
       next: (sprints) => {
-        const openSprints = sprints.filter((sprint) => sprint.state === 'PLANNED' || sprint.state === 'ACTIVE');
+        const openSprints = sprints.filter(
+          (sprint) => sprint.state === 'PLANNED' || sprint.state === 'ACTIVE',
+        );
         if (openSprints.length === 0) {
           this.sections.set([]);
           this.loadBacklog();
@@ -80,7 +96,9 @@ export class Backlog {
           openSprints.map((sprint) => this.issueService.listForProject(this.projectKey, sprint.id)),
         ).subscribe({
           next: (issuesPerSprint) => {
-            this.sections.set(openSprints.map((sprint, index) => ({ sprint, issues: issuesPerSprint[index] })));
+            this.sections.set(
+              openSprints.map((sprint, index) => ({ sprint, issues: issuesPerSprint[index] })),
+            );
             this.loadBacklog();
           },
           error: () => {
@@ -129,7 +147,8 @@ export class Backlog {
 
       const issue = issues[event.currentIndex];
       const beforeIssueKey = event.currentIndex > 0 ? issues[event.currentIndex - 1].key : null;
-      const afterIssueKey = event.currentIndex < issues.length - 1 ? issues[event.currentIndex + 1].key : null;
+      const afterIssueKey =
+        event.currentIndex < issues.length - 1 ? issues[event.currentIndex + 1].key : null;
       this.issueService.reorderBacklog(issue.key, beforeIssueKey, afterIssueKey).subscribe({
         error: () => {
           moveItemInArray(issues, event.currentIndex, event.previousIndex);
@@ -140,7 +159,12 @@ export class Backlog {
     }
 
     const issue = event.previousContainer.data[event.previousIndex];
-    transferArrayItem(event.previousContainer.data, event.container.data, event.previousIndex, event.currentIndex);
+    transferArrayItem(
+      event.previousContainer.data,
+      event.container.data,
+      event.previousIndex,
+      event.currentIndex,
+    );
 
     if (targetSprintId === null) {
       // The backlog is the only section with a persisted order, so a card dragged in from a
@@ -148,7 +172,8 @@ export class Backlog {
       // to its stale, creation-time rank on the next fetch.
       const issues = event.container.data;
       const beforeIssueKey = event.currentIndex > 0 ? issues[event.currentIndex - 1].key : null;
-      const afterIssueKey = event.currentIndex < issues.length - 1 ? issues[event.currentIndex + 1].key : null;
+      const afterIssueKey =
+        event.currentIndex < issues.length - 1 ? issues[event.currentIndex + 1].key : null;
 
       this.issueService.moveToSprint(issue.key, targetSprintId).subscribe({
         next: () => {
@@ -162,7 +187,12 @@ export class Backlog {
           });
         },
         error: () => {
-          transferArrayItem(event.container.data, event.previousContainer.data, event.currentIndex, event.previousIndex);
+          transferArrayItem(
+            event.container.data,
+            event.previousContainer.data,
+            event.currentIndex,
+            event.previousIndex,
+          );
           this.errorMessage.set(`Failed to move ${issue.key}. Please try again.`);
         },
       });
@@ -171,7 +201,12 @@ export class Backlog {
 
     this.issueService.moveToSprint(issue.key, targetSprintId).subscribe({
       error: () => {
-        transferArrayItem(event.container.data, event.previousContainer.data, event.currentIndex, event.previousIndex);
+        transferArrayItem(
+          event.container.data,
+          event.previousContainer.data,
+          event.currentIndex,
+          event.previousIndex,
+        );
         this.errorMessage.set(`Failed to move ${issue.key}. Please try again.`);
       },
     });
@@ -201,6 +236,13 @@ export class Backlog {
       backlogIssues[backlogIndex] = updated;
       this.backlogIssues.set([...backlogIssues]);
     }
+  }
+
+  epicTitleFor(issue: Issue): string | null {
+    if (!issue.parentId) {
+      return null;
+    }
+    return this.epics().find((epic) => epic.id === issue.parentId)?.title ?? null;
   }
 
   onIssueDeleted(issueKey: string): void {

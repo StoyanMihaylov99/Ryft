@@ -56,7 +56,7 @@ class BacklogServiceImplTest {
 
     private IssueResponse issue(UUID sprintId) {
         return new IssueResponse(UUID.randomUUID(), projectId, "TRK-1", IssueType.BUG, "Title", null,
-                IssueStatus.TODO, IssuePriority.MEDIUM, null, callerId, sprintId, null, Instant.now(), null, null);
+                IssueStatus.TODO, IssuePriority.MEDIUM, null, callerId, sprintId, null, null, Instant.now(), null, null);
     }
 
     @Test

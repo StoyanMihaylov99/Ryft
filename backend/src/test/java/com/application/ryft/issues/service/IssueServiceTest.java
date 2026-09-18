@@ -18,6 +18,7 @@ import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
+import com.application.ryft.issues.exception.InvalidEpicLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.repository.CommentRepository;
@@ -72,7 +73,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, null));
+                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, null, null));
 
         assertThat(result.key()).isEqualTo("TRK-1");
         assertThat(result.status()).isEqualTo(IssueStatus.TODO);
@@ -90,7 +91,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, 5));
+                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, 5, null));
 
         assertThat(result.storyPoints()).isEqualTo(5);
     }
@@ -106,7 +107,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Second issue", null, IssuePriority.HIGH, null, null));
+                new CreateIssueRequest(IssueType.TASK, "Second issue", null, IssuePriority.HIGH, null, null, null));
 
         assertThat(result.key()).isEqualTo("TRK-2");
         assertThat(result.priority()).isEqualTo(IssuePriority.HIGH);
@@ -118,7 +119,7 @@ class IssueServiceTest {
                 .thenThrow(new com.application.ryft.issues.exception.ProjectNotFoundException("TRK"));
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null)))
                 .isInstanceOf(com.application.ryft.issues.exception.ProjectNotFoundException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -128,7 +129,7 @@ class IssueServiceTest {
         when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null)))
                 .isInstanceOf(NotAProjectMemberException.class);
     }
 
@@ -138,7 +139,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null)))
                 .isInstanceOf(InsufficientProjectRoleException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -151,7 +152,7 @@ class IssueServiceTest {
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, outsiderId, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, outsiderId, null, null)))
                 .isInstanceOf(AssigneeNotAProjectMemberException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -167,7 +168,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, assigneeId, null));
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, assigneeId, null, null));
 
         assertThat(result.assigneeId()).isEqualTo(assigneeId);
     }
@@ -199,7 +200,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null, null));
+                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null, null, null));
 
         assertThat(result.title()).isEqualTo("New title");
         assertThat(result.description()).isEqualTo("orig desc");
@@ -215,7 +216,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, null, 8));
+                new UpdateIssueRequest(null, null, null, null, 8, null));
 
         assertThat(result.storyPoints()).isEqualTo(8);
     }
@@ -230,7 +231,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, null, null, null));
+                new UpdateIssueRequest("New title", null, null, null, null, null));
 
         assertThat(result.storyPoints()).isEqualTo(3);
     }
@@ -243,7 +244,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, null, null, null)))
+                new UpdateIssueRequest("New title", null, null, null, null, null)))
                 .isInstanceOf(InsufficientProjectRoleException.class);
     }
 
@@ -257,7 +258,7 @@ class IssueServiceTest {
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, outsiderId, null)))
+                new UpdateIssueRequest(null, null, null, outsiderId, null, null)))
                 .isInstanceOf(AssigneeNotAProjectMemberException.class);
     }
 
@@ -398,7 +399,7 @@ class IssueServiceTest {
         ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
         when(issueRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
-        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "First", null, null, null, null));
+        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "First", null, null, null, null, null));
 
         assertThat(captor.getValue().getBacklogRank()).isEqualTo(1000.0);
     }
@@ -415,7 +416,7 @@ class IssueServiceTest {
         ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
         when(issueRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
-        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "Second", null, null, null, null));
+        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "Second", null, null, null, null, null));
 
         assertThat(captor.getValue().getBacklogRank()).isEqualTo(2000.0);
     }
@@ -537,6 +538,143 @@ class IssueServiceTest {
         assertThatThrownBy(() -> issueService.reorderBacklog(callerId, "TRK-1", null, null))
                 .isInstanceOf(InsufficientProjectRoleException.class);
         assertThat(issue.getBacklogRank()).isEqualTo(1000.0);
+    }
+
+    @Test
+    void createStoryWithValidParentLinksToEpic() {
+        UUID epicId = UUID.randomUUID();
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(epicId, projectId)).thenReturn(Optional.of(epic));
+        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
+        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        IssueResponse result = issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, epicId));
+
+        assertThat(result.parentId()).isEqualTo(epicId);
+    }
+
+    @Test
+    void createWithParentPointingToNonEpicThrows() {
+        UUID parentId = UUID.randomUUID();
+        Issue nonEpicParent = new Issue(projectId, "TRK-1", IssueType.TASK, "Not an epic", null,
+                IssuePriority.MEDIUM, null, callerId, 1000.0);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.of(nonEpicParent));
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
+                .isInstanceOf(InvalidEpicLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createWithParentInDifferentProjectThrows() {
+        UUID parentId = UUID.randomUUID();
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.empty());
+        when(issueRepository.existsById(parentId)).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
+                .isInstanceOf(InvalidEpicLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createWithUnknownParentThrows() {
+        UUID parentId = UUID.randomUUID();
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.empty());
+        when(issueRepository.existsById(parentId)).thenReturn(false);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
+                .isInstanceOf(InvalidEpicLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createEpicWithNonNullParentThrows() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.EPIC, "Epic", null, null, null, null, UUID.randomUUID())))
+                .isInstanceOf(InvalidEpicLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void updateAddsParentLinkToEpic() {
+        UUID epicId = UUID.randomUUID();
+        Issue issue = new Issue(projectId, "TRK-2", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 500.0);
+        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(epicId, projectId)).thenReturn(Optional.of(epic));
+
+        IssueResponse result = issueService.update(callerId, "TRK-2",
+                new UpdateIssueRequest(null, null, null, null, null, epicId));
+
+        assertThat(result.parentId()).isEqualTo(epicId);
+    }
+
+    @Test
+    void updateWithParentPointingToNonEpicThrows() {
+        UUID parentId = UUID.randomUUID();
+        Issue issue = new Issue(projectId, "TRK-2", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        Issue nonEpicParent = new Issue(projectId, "TRK-1", IssueType.TASK, "Not an epic", null,
+                IssuePriority.MEDIUM, null, callerId, 500.0);
+        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.of(nonEpicParent));
+
+        assertThatThrownBy(() -> issueService.update(callerId, "TRK-2",
+                new UpdateIssueRequest(null, null, null, null, null, parentId)))
+                .isInstanceOf(InvalidEpicLinkException.class);
+        assertThat(issue.getParentIssueId()).isNull();
+    }
+
+    @Test
+    void updateOnAnEpicWithParentThrows() {
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(epic));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
+                new UpdateIssueRequest(null, null, null, null, null, UUID.randomUUID())))
+                .isInstanceOf(InvalidEpicLinkException.class);
+    }
+
+    @Test
+    void listForProjectByEpicReturnsOnlyMatchingIssues() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        UUID epicId = UUID.randomUUID();
+        Issue issue = new Issue(projectId, "TRK-2", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        issue.setParentIssueId(epicId);
+        when(issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(projectId, epicId))
+                .thenReturn(List.of(issue));
+
+        List<IssueResponse> result = issueService.listForProjectByEpic(callerId, "TRK", epicId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).parentId()).isEqualTo(epicId);
     }
 
     @Test

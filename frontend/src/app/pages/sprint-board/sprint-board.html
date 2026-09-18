@@ -5,7 +5,10 @@
       <div class="sprint-board-header">
         <div>
           <a routerLink="/projects" class="breadcrumb">Projects</a>
-          <h1>{{ board()?.sprintName ?? 'Sprint board' }} <span class="project-key">· {{ projectKey }}</span></h1>
+          <h1>
+            {{ board()?.sprintName ?? 'Sprint board' }}
+            <span class="project-key">· {{ projectKey }}</span>
+          </h1>
         </div>
         <div class="header-actions">
           <a [routerLink]="['/projects', projectKey, 'board']" class="secondary">Board</a>
@@ -40,8 +43,8 @@
       } @else if (noActiveSprint()) {
         <p class="empty-state">
           This project has no active sprint right now.
-          <a [routerLink]="['/projects', projectKey, 'sprints']">Start one from the Sprints page</a> to see it
-          here.
+          <a [routerLink]="['/projects', projectKey, 'sprints']">Start one from the Sprints page</a>
+          to see it here.
         </p>
       } @else if (board(); as boardValue) {
         <div class="board">
@@ -60,7 +63,7 @@
               >
                 @for (issue of column.issues; track issue.id) {
                   <button type="button" class="issue-card" cdkDrag (click)="openIssue(issue.key)">
-                    <app-issue-card [issue]="issue" />
+                    <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
                   </button>
                 } @empty {
                   <p class="column-empty">No issues here yet.</p>
@@ -77,6 +80,7 @@
 @if (selectedIssueKey(); as issueKey) {
   <app-issue-detail-panel
     [issueKey]="issueKey"
+    [projectKey]="projectKey"
     [canManage]="canManageIssues()"
     (closed)="closePanel()"
     (updated)="onIssueUpdated($event)"

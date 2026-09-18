@@ -19,4 +19,8 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     List<Issue> findAllByProjectIdAndSprintId(UUID projectId, UUID sprintId);
 
     List<Issue> findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(UUID projectId, UUID sprintId);
+
+    Optional<Issue> findByIdAndProjectId(UUID id, UUID projectId);
+
+    List<Issue> findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(UUID projectId, UUID parentIssueId);
 }

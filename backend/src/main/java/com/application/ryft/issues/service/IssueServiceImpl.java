@@ -8,8 +8,10 @@ import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssueKeySequence;
 import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
+import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
+import com.application.ryft.issues.exception.InvalidEpicLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
@@ -49,6 +51,10 @@ public class IssueServiceImpl implements IssueService {
         if (request.assigneeId() != null) {
             requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
         }
+        if (request.parentId() != null) {
+            requireStoryTaskOrBug(request.type());
+            requireEpicParent(request.parentId(), project.id());
+        }
 
         IssuePriority priority = request.priority() != null ? request.priority() : IssuePriority.MEDIUM;
         String description = request.description() == null ? null : request.description().trim();
@@ -58,6 +64,7 @@ public class IssueServiceImpl implements IssueService {
         Issue issue = new Issue(project.id(), issueKey, request.type(), request.title().trim(), description,
                 priority, request.assigneeId(), callerId, rank);
         issue.setStoryPoints(request.storyPoints());
+        issue.setParentIssueId(request.parentId());
         return IssueResponse.from(issueRepository.save(issue));
     }
 
@@ -84,6 +91,15 @@ public class IssueServiceImpl implements IssueService {
     public List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         return issueRepository.findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(project.id()).stream()
+                .map(IssueResponse::from)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<IssueResponse> listForProjectByEpic(UUID callerId, String projectKey, UUID epicId) {
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        return issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(project.id(), epicId).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -132,6 +148,7 @@ public class IssueServiceImpl implements IssueService {
         applyPriority(issue, request);
         applyAssignee(issue, callerId, projectKey, request);
         applyStoryPoints(issue, request);
+        applyParentId(issue, request);
     }
 
     private void applyTitle(Issue issue, UpdateIssueRequest request) {
@@ -163,6 +180,38 @@ public class IssueServiceImpl implements IssueService {
         if (request.storyPoints() != null) {
             issue.setStoryPoints(request.storyPoints());
         }
+    }
+
+    private void applyParentId(Issue issue, UpdateIssueRequest request) {
+        if (request.parentId() == null) {
+            return;
+        }
+        requireStoryTaskOrBug(issue.getType());
+        if (request.parentId().equals(issue.getId())) {
+            throw new InvalidEpicLinkException("An issue cannot be linked to itself as its parent Epic");
+        }
+        requireEpicParent(request.parentId(), issue.getProjectId());
+        issue.setParentIssueId(request.parentId());
+    }
+
+    private void requireStoryTaskOrBug(IssueType type) {
+        if (type != IssueType.STORY && type != IssueType.TASK && type != IssueType.BUG) {
+            throw new InvalidEpicLinkException("Only Story, Task, or Bug issues can be linked to an Epic");
+        }
+    }
+
+    private Issue requireEpicParent(UUID parentId, UUID projectId) {
+        Optional<Issue> parent = issueRepository.findByIdAndProjectId(parentId, projectId);
+        if (parent.isEmpty()) {
+            if (issueRepository.existsById(parentId)) {
+                throw new InvalidEpicLinkException("Epic " + parentId + " does not belong to this project");
+            }
+            throw new InvalidEpicLinkException("Epic " + parentId + " does not exist");
+        }
+        if (parent.get().getType() != IssueType.EPIC) {
+            throw new InvalidEpicLinkException("Issue " + parent.get().getKey() + " is not an Epic");
+        }
+        return parent.get();
     }
 
     private void setStatus(Issue issue, IssueStatus status) {

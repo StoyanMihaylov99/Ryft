@@ -1,8 +1,9 @@
 package com.application.ryft.issues.entity;
 
-/** v1 only supports the "flat" issue types; EPIC and SUBTASK arrive with Phase 3's hierarchy work. */
+/** EPIC arrives with Phase 3's hierarchy work; SUBTASK is still to come, later in the same phase. */
 public enum IssueType {
     STORY,
     TASK,
-    BUG
+    BUG,
+    EPIC
 }

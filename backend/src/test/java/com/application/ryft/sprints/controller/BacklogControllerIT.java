@@ -99,7 +99,7 @@ class BacklogControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);

@@ -24,6 +24,7 @@ function issue(overrides: Partial<Issue> = {}): Issue {
     updatedAt: null,
     resolvedAt: null,
     sprintId: null,
+    parentId: null,
     ...overrides,
   };
 }
@@ -53,6 +54,10 @@ describe('IssueDetailPanel', () => {
   function flushLoad(issueValue: Issue, comments: Comment[] = []): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`).flush(issueValue);
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/comments`).flush(comments);
+  }
+
+  function flushEpics(epics: Issue[] = []): void {
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`).flush(epics);
   }
 
   it('loads the issue and its comments on creation', () => {
@@ -126,7 +131,9 @@ describe('IssueDetailPanel', () => {
     component.updateDraftStatus('DONE');
     component.save();
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`).flush(issue({ status: 'DONE' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
+      .flush(issue({ status: 'DONE' }));
 
     expect(component.issue()?.status).toBe('DONE');
   });
@@ -144,8 +151,12 @@ describe('IssueDetailPanel', () => {
     // Guards the sequential (switchMap) design: the status request must not fire until the
     // PATCH response comes back, unlike a concurrent (e.g. forkJoin) implementation would.
     httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1/status`);
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`).flush(issue({ title: 'New title' }));
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`).flush(issue({ title: 'New title', status: 'DONE' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1`)
+      .flush(issue({ title: 'New title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
+      .flush(issue({ title: 'New title', status: 'DONE' }));
 
     expect(component.issue()?.title).toBe('New title');
     expect(component.issue()?.status).toBe('DONE');
@@ -230,7 +241,9 @@ describe('IssueDetailPanel', () => {
     component.updateDraftStatus('DONE');
     component.save();
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`).flush(issue({ title: 'New title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1`)
+      .flush(issue({ title: 'New title' }));
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
       .flush('Server error', { status: 500, statusText: 'Server Error' });
@@ -244,7 +257,8 @@ describe('IssueDetailPanel', () => {
     expect(component.hasUnsavedChanges()).toBe(true);
 
     fixture.detectChanges();
-    const saveButton = fixture.debugElement.query(By.css('.save-btn')).nativeElement as HTMLButtonElement;
+    const saveButton = fixture.debugElement.query(By.css('.save-btn'))
+      .nativeElement as HTMLButtonElement;
     expect(saveButton.disabled).toBe(false);
   });
 
@@ -261,7 +275,9 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2`).flush(issue({ key: 'TRK-2', title: 'Other title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
+      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
 
     req.flush(issue({ title: 'New title' }));
@@ -282,7 +298,9 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2`).flush(issue({ key: 'TRK-2', title: 'Other title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
+      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
 
     req.flush(issue({ title: 'New title' }));
@@ -292,7 +310,8 @@ describe('IssueDetailPanel', () => {
     component.updateDraftTitle('Yet another title');
     fixture.detectChanges();
 
-    const saveButton = fixture.debugElement.query(By.css('.save-btn')).nativeElement as HTMLButtonElement;
+    const saveButton = fixture.debugElement.query(By.css('.save-btn'))
+      .nativeElement as HTMLButtonElement;
     expect(saveButton.disabled).toBe(false);
   });
 
@@ -301,7 +320,8 @@ describe('IssueDetailPanel', () => {
     flushLoad(issue());
     fixture.detectChanges();
 
-    const saveButton = fixture.debugElement.query(By.css('.save-btn')).nativeElement as HTMLButtonElement;
+    const saveButton = fixture.debugElement.query(By.css('.save-btn'))
+      .nativeElement as HTMLButtonElement;
     expect(saveButton.disabled).toBe(false);
 
     component.updateDraftTitle('New title');
@@ -309,7 +329,9 @@ describe('IssueDetailPanel', () => {
     fixture.detectChanges();
     expect(saveButton.disabled).toBe(true);
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`).flush(issue({ title: 'New title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1`)
+      .flush(issue({ title: 'New title' }));
     fixture.detectChanges();
     expect(saveButton.disabled).toBe(false);
   });
@@ -323,7 +345,9 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2`).flush(issue({ key: 'TRK-2', title: 'Other title' }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
+      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
 
     expect(component.draftTitle()).toBe('Other title');
@@ -394,5 +418,136 @@ describe('IssueDetailPanel', () => {
     expect(component.confirmingDeleteCommentId()).toBe('c1');
     component.cancelDeleteComment();
     expect(component.confirmingDeleteCommentId()).toBeNull();
+  });
+
+  it("does not request the project's epics when no projectKey is provided", () => {
+    flushLoad(issue());
+
+    expect(component.epics()).toEqual([]);
+  });
+
+  it("loads the project's epics when projectKey is provided", () => {
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue());
+    flushEpics([issue({ id: 'e1', key: 'TRK-9', type: 'EPIC', title: 'Epic 1' })]);
+
+    expect(component.epics().map((e) => e.key)).toEqual(['TRK-9']);
+  });
+
+  it('shows the Epic field for a Story/Task/Bug issue and hides it for an Epic issue', () => {
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'STORY' }));
+    flushEpics();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-label'))).not.toBeNull();
+
+    fixture.componentRef.setInput('issueKey', 'TRK-2');
+    fixture.detectChanges();
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
+      .flush(issue({ key: 'TRK-2', type: 'EPIC' }));
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-label'))).toBeNull();
+  });
+
+  it('shows the linked-epic chip once the linked epic is resolved from the loaded epics', () => {
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'STORY', parentId: 'e1' }));
+    flushEpics([issue({ id: 'e1', key: 'TRK-9', type: 'EPIC', title: 'Epic 1' })]);
+    fixture.detectChanges();
+
+    const chip = fixture.debugElement.query(By.css('.epic-chip'));
+    expect(chip.nativeElement.textContent).toContain('Epic 1');
+  });
+
+  it('saves the staged Epic link when Save is clicked and emits updated', () => {
+    fixture.componentRef.setInput('canManage', true);
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'STORY' }));
+    flushEpics([issue({ id: 'e1', key: 'TRK-9', type: 'EPIC', title: 'Epic 1' })]);
+    const updatedSpy = vi.fn();
+    component.updated.subscribe(updatedSpy);
+
+    component.updateDraftParentId('e1');
+    component.save();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+    expect(req.request.body).toEqual({ parentId: 'e1' });
+    req.flush(issue({ type: 'STORY', parentId: 'e1' }));
+
+    expect(component.issue()?.parentId).toBe('e1');
+    expect(updatedSpy).toHaveBeenCalled();
+  });
+
+  it('does not stage or save Epic link changes when the caller cannot manage issues', () => {
+    // canManage defaults to false
+    flushLoad(issue({ type: 'STORY' }));
+
+    component.updateDraftParentId('e1');
+    component.save();
+
+    expect(component.draftParentId()).toBeNull();
+    httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1`);
+  });
+
+  it('surfaces a failed save the same way as any other rejected field, when the backend rejects the Epic link', () => {
+    fixture.componentRef.setInput('canManage', true);
+    flushLoad(issue({ type: 'STORY' }));
+
+    component.updateDraftParentId('e1');
+    component.save();
+
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1`)
+      .flush(
+        { message: 'Epic must belong to the same project' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+    expect(component.errorMessage()).toBe('Failed to save changes.');
+  });
+
+  it('always offers "No epic" as an option, including on an issue that already has one linked', () => {
+    fixture.componentRef.setInput('canManage', true);
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'STORY', parentId: 'e1' }));
+    flushEpics([issue({ id: 'e1', key: 'TRK-9', type: 'EPIC', title: 'Epic 1' })]);
+    fixture.detectChanges();
+
+    const options = fixture.debugElement.queryAll(By.css('.epic-label select option'));
+    expect(options.map((option) => option.nativeElement.value)).toEqual(['', 'e1']);
+  });
+
+  it('does not send a no-op parentId clear when the user picks "No epic" on an already-linked issue, and warns instead', () => {
+    fixture.componentRef.setInput('canManage', true);
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'STORY', parentId: 'e1', priority: 'MEDIUM' }));
+    flushEpics([issue({ id: 'e1', key: 'TRK-9', type: 'EPIC', title: 'Epic 1' })]);
+
+    component.updateDraftParentId(null);
+    expect(component.attemptingToUnlinkEpic()).toBe(true);
+
+    fixture.detectChanges();
+    const warning = fixture.debugElement.query(By.css('#epic-unlink-warning'));
+    expect(warning.nativeElement.textContent).toContain("Epics can't be unlinked yet");
+
+    // A real, savable change alongside the unlink attempt must still be sent, without parentId.
+    component.updateDraftPriority('HIGH');
+    component.save();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+    expect(req.request.body).toEqual({ priority: 'HIGH' });
+    req.flush(issue({ type: 'STORY', parentId: 'e1', priority: 'HIGH' }));
+
+    expect(component.issue()?.parentId).toBe('e1');
   });
 });

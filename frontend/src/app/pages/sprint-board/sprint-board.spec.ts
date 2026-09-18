@@ -12,10 +12,17 @@ import { Burndown, SprintBoard as SprintBoardModel } from '../../core/sprint/mod
 import { SprintBoard } from './sprint-board';
 
 function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
-  return { userId, email: 'x@example.com', displayName: 'X', avatarUrl: null, role, addedAt: '2024-01-01T00:00:00Z' };
+  return {
+    userId,
+    email: 'x@example.com',
+    displayName: 'X',
+    avatarUrl: null,
+    role,
+    addedAt: '2024-01-01T00:00:00Z',
+  };
 }
 
-function issue(key: string, status: Issue['status']): Issue {
+function issue(key: string, status: Issue['status'], overrides: Partial<Issue> = {}): Issue {
   return {
     id: key,
     projectId: 'p1',
@@ -32,6 +39,8 @@ function issue(key: string, status: Issue['status']): Issue {
     updatedAt: null,
     resolvedAt: null,
     sprintId: 's1',
+    parentId: null,
+    ...overrides,
   };
 }
 
@@ -132,7 +141,9 @@ describe('SprintBoard', () => {
     expect(component.loading()).toBe(false);
     expect(component.board()?.columns[0].issues).toHaveLength(1);
     expect(component.board()?.sprintName).toBe('Sprint 1');
-    expect(fixture.debugElement.query(By.css('h1')).nativeElement.textContent).toContain('Sprint 1');
+    expect(fixture.debugElement.query(By.css('h1')).nativeElement.textContent).toContain(
+      'Sprint 1',
+    );
   });
 
   it('canManageIssues is true for an Owner and false for a plain Member', () => {
@@ -168,9 +179,14 @@ describe('SprintBoard', () => {
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`).flush(issue('TRK-1', 'IN_PROGRESS'));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
+      .flush(issue('TRK-1', 'IN_PROGRESS'));
     expect(todoColumn.issues).toHaveLength(0);
     expect(inProgressColumn.issues.map((i) => i.key)).toEqual(['TRK-1']);
   });
@@ -181,7 +197,10 @@ describe('SprintBoard', () => {
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
@@ -238,6 +257,15 @@ describe('SprintBoard', () => {
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('app-burndown-chart'))).not.toBeNull();
+  });
+
+  it("resolves a card issue's linked-epic title from the issues already loaded on the sprint board", () => {
+    const epic = issue('TRK-1', 'TODO', { type: 'EPIC', title: 'Big epic' });
+    const story = issue('TRK-2', 'TODO', { type: 'STORY', parentId: 'TRK-1' });
+    flushInitialBoard(boardWith(epic, story));
+
+    expect(component.epicTitleFor(story)).toBe('Big epic');
+    expect(component.epicTitleFor(epic)).toBeNull();
   });
 
   it('shows a generic error banner for a non-404 failure', () => {

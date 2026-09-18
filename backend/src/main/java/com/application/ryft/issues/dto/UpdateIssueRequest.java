@@ -6,14 +6,17 @@ import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
 /**
- * Partial update: a null field is left unchanged. There is currently no way to clear an assignee
- * or story points through this endpoint (null means "don't touch it") — set a new value instead.
+ * Partial update: a null field is left unchanged. There is currently no way to clear an assignee,
+ * story points, or parent link through this endpoint (null means "don't touch it") — set a new value
+ * instead. {@code parentId} is subject to the same STORY/TASK/BUG-to-EPIC rules as on create (see
+ * IssueServiceImpl).
  */
 public record UpdateIssueRequest(
         @Size(max = 200) String title,
         @Size(max = 10000) String description,
         IssuePriority priority,
         UUID assigneeId,
-        @PositiveOrZero Integer storyPoints
+        @PositiveOrZero Integer storyPoints,
+        UUID parentId
 ) {
 }
