@@ -1,9 +1,11 @@
 import { Component, input } from '@angular/core';
 import { Issue } from '../../core/issue/models';
+import { ComponentChip } from '../component-chip/component-chip';
 import { IssueTypeBadge } from '../issue-type-badge/issue-type-badge';
+import { LabelChip } from '../label-chip/label-chip';
 
 @Component({
-  imports: [IssueTypeBadge],
+  imports: [IssueTypeBadge, LabelChip, ComponentChip],
   selector: 'app-issue-card',
   templateUrl: './issue-card.html',
   styleUrl: './issue-card.css',

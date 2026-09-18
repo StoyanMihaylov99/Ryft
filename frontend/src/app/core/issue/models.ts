@@ -2,6 +2,27 @@ export type IssueType = 'STORY' | 'TASK' | 'BUG' | 'EPIC' | 'SUBTASK';
 export type IssueStatus = 'TODO' | 'BLOCKED' | 'IN_PROGRESS' | 'DONE';
 export type IssuePriority = 'LOWEST' | 'LOW' | 'MEDIUM' | 'HIGH' | 'HIGHEST';
 
+export interface Label {
+  id: string;
+  projectId: string;
+  name: string;
+  /** A 6-digit hex code, e.g. `#4287F5` — user-chosen and arbitrary, so anything rendering this as
+   *  a chip background must compute its own legible text color rather than assuming white/black
+   *  (see `contrastTextColor` in `shared/color-contrast.ts`). */
+  color: string;
+}
+
+/**
+ * Named `ProjectComponent`, not `Component` (which is the backend entity's name): a `Component`
+ * interface here would collide with `@angular/core`'s `Component` decorator, imported by every
+ * Angular component file in this app.
+ */
+export interface ProjectComponent {
+  id: string;
+  projectId: string;
+  name: string;
+}
+
 export interface Issue {
   id: string;
   projectId: string;
@@ -19,6 +40,8 @@ export interface Issue {
    *  STORY/TASK/BUG (or null if unlinked), the parent issue's id for a SUBTASK (never null), or
    *  always null for an EPIC itself. */
   parentId: string | null;
+  labels: Label[];
+  components: ProjectComponent[];
   createdAt: string;
   updatedAt: string | null;
   resolvedAt: string | null;
@@ -36,6 +59,10 @@ export interface CreateIssueRequest {
    *  `createSubtask`/`CreateSubtaskRequest` is the simpler path — it resolves the parent from the
    *  URL instead. */
   parentId?: string | null;
+  /** Omitted and empty both mean "no labels/components" — there's no existing state to preserve on
+   *  create, unlike `UpdateIssueRequest` below. */
+  labelIds?: string[];
+  componentIds?: string[];
 }
 
 /** Partial update: an omitted/undefined field is left unchanged server-side. */
@@ -49,6 +76,16 @@ export interface UpdateIssueRequest {
    *  a STORY/TASK/BUG). There is no way to clear an existing link through this endpoint (null
    *  means "don't touch it") — point it at a different parent instead. */
   parentId?: string | null;
+  /**
+   * The one departure from "omitted means don't touch": since these are multi-select fields,
+   * `undefined`/omitted still means "leave the existing set unchanged", but an explicit empty
+   * array (`[]`) means "clear all labels/components" — a real, distinguishable request, unlike a
+   * scalar field such as `assigneeId` where JSON has no way to say "empty" separately from
+   * "absent". Only send `[]` once the user has actually touched the selection; sending it
+   * unconditionally would silently wipe out an untouched issue's existing labels/components.
+   */
+  labelIds?: string[];
+  componentIds?: string[];
 }
 
 /** Slimmer than `CreateIssueRequest`: `type` (always SUBTASK) and `parentId` are both implied by the
@@ -67,4 +104,27 @@ export interface EpicProgress {
   totalCount: number;
   doneCount: number;
   percentDone: number;
+}
+
+/** `color` must be a 6-digit hex code (e.g. `#4287F5`); name is unique per project (case-sensitive). */
+export interface CreateLabelRequest {
+  name: string;
+  color: string;
+}
+
+/** Partial update: an omitted/undefined field is left unchanged. There's no way to clear either
+ *  field — a label always needs a name and a color. */
+export interface UpdateLabelRequest {
+  name?: string;
+  color?: string;
+}
+
+/** name is unique per project (case-sensitive). */
+export interface CreateComponentRequest {
+  name: string;
+}
+
+/** Partial update: an omitted/undefined name is left unchanged. */
+export interface UpdateComponentRequest {
+  name?: string;
 }

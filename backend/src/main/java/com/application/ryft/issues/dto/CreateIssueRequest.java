@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -14,7 +15,10 @@ import java.util.UUID;
  * STORY/TASK/BUG, and must then point at an EPIC in the same project; forbidden for EPIC; required for
  * SUBTASK, and must then point at a STORY/TASK/BUG in the same project. Creating a SUBTASK is usually
  * simpler via {@code POST /issues/{issueKey}/subtasks} (see {@link CreateSubtaskRequest}), which
- * resolves {@code parentId} from the URL instead.
+ * resolves {@code parentId} from the URL instead. {@code labelIds}/{@code componentIds} are optional;
+ * every id must resolve to a Label/Component in this same project (400 otherwise, see
+ * {@code IssueServiceImpl}) — omitted or empty both mean "no labels/components" since there's no
+ * existing state to preserve on create (contrast with {@link UpdateIssueRequest}, where the two differ).
  */
 public record CreateIssueRequest(
         @NotNull IssueType type,
@@ -23,6 +27,8 @@ public record CreateIssueRequest(
         IssuePriority priority,
         UUID assigneeId,
         @PositiveOrZero Integer storyPoints,
-        UUID parentId
+        UUID parentId,
+        List<UUID> labelIds,
+        List<UUID> componentIds
 ) {
 }

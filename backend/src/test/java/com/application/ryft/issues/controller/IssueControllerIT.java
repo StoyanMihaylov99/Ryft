@@ -113,7 +113,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.BUG, "First bug", "desc", null, null, null, null))))
+                                new CreateIssueRequest(IssueType.BUG, "First bug", "desc", null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse firstIssue = objectMapper.readValue(first.getResponse().getContentAsString(), IssueResponse.class);
@@ -125,7 +125,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Second task", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Second task", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse secondIssue = objectMapper.readValue(second.getResponse().getContentAsString(), IssueResponse.class);
@@ -146,7 +146,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + outsiderToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isForbidden());
     }
 
@@ -165,7 +165,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isForbidden());
     }
 
@@ -184,7 +184,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated());
     }
 
@@ -197,7 +197,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isNotFound());
     }
 
@@ -212,7 +212,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, 5, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, 5, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(result.getResponse().getContentAsString(), IssueResponse.class);
@@ -230,7 +230,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, UUID.randomUUID(), null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, UUID.randomUUID(), null, null, null, null))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -245,7 +245,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.EPIC, "Epic title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.EPIC, "Epic title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse epic = objectMapper.readValue(result.getResponse().getContentAsString(), IssueResponse.class);
@@ -266,7 +266,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.STORY, "Story title", null, null, null, null,
-                                        epic.id()))))
+                                        epic.id(), null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse story = objectMapper.readValue(result.getResponse().getContentAsString(), IssueResponse.class);
@@ -286,7 +286,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.TASK, "Task title", null, null, null, null,
-                                        otherStory.id()))))
+                                        otherStory.id(), null, null))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -302,7 +302,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.TASK, "Task title", null, null, null, null,
-                                        UUID.randomUUID()))))
+                                        UUID.randomUUID(), null, null))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -319,7 +319,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.EPIC, "Another epic", null, null, null, null,
-                                        epic.id()))))
+                                        epic.id(), null, null))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -349,7 +349,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(type, title, null, null, null, null, parentId))))
+                                new CreateIssueRequest(type, title, null, null, null, null, parentId, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -365,7 +365,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated());
 
         MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectKey}/issues", key)
@@ -388,7 +388,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Backlog issue", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Backlog issue", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse backlogIssue = objectMapper.readValue(backlogIssueResult.getResponse().getContentAsString(),
@@ -398,7 +398,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Sprint issue", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Sprint issue", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse sprintIssue = objectMapper.readValue(sprintIssueResult.getResponse().getContentAsString(),
@@ -482,7 +482,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, title, null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, title, null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -498,7 +498,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -534,7 +534,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -543,7 +543,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new UpdateIssueRequest("New title", null, null, member.getId(), null, null))))
+                                new UpdateIssueRequest("New title", null, null, member.getId(), null, null, null, null))))
                 .andExpect(status().isOk())
                 .andReturn();
         IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
@@ -562,7 +562,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -571,7 +571,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new UpdateIssueRequest(null, null, null, null, 8, null))))
+                                new UpdateIssueRequest(null, null, null, null, 8, null, null, null))))
                 .andExpect(status().isOk())
                 .andReturn();
         IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
@@ -592,7 +592,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new UpdateIssueRequest(null, null, null, null, null, issue.id()))))
+                                new UpdateIssueRequest(null, null, null, null, null, issue.id(), null, null))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("An issue cannot be linked to itself as its parent"));
     }
@@ -612,7 +612,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -620,7 +620,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(patch("/api/v1/issues/{issueKey}", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new UpdateIssueRequest("Hijacked", null, null, null, null, null))))
+                        .content(objectMapper.writeValueAsString(new UpdateIssueRequest("Hijacked", null, null, null, null, null, null, null))))
                 .andExpect(status().isForbidden());
     }
 
@@ -635,7 +635,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -666,7 +666,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -690,7 +690,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -719,7 +719,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -740,7 +740,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -765,7 +765,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);

@@ -99,7 +99,7 @@ class IssueSubtasksControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(type, type + " title", null, null, null, null, null))))
+                                new CreateIssueRequest(type, type + " title", null, null, null, null, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readValue(result.getResponse().getContentAsString(), IssueResponse.class);
@@ -346,7 +346,7 @@ class IssueSubtasksControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.STORY, "Linked story", null, null, null, null,
-                                        epic.id()))))
+                                        epic.id(), null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse linkedStory = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);

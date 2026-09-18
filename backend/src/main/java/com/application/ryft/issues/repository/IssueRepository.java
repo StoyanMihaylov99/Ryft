@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
@@ -45,4 +47,26 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     long countByProjectIdAndParentIssueId(UUID projectId, UUID parentIssueId);
 
     long countByProjectIdAndParentIssueIdAndStatus(UUID projectId, UUID parentIssueId, IssueStatus status);
+
+    /**
+     * Backs {@code GET /projects/{projectKey}/issues?labelId=} — a JPQL sub-select against
+     * {@code IssueLabel} rather than a {@code @ManyToMany} traversal, consistent with {@link IssueLabel}
+     * being modeled as its own entity (see its javadoc).
+     */
+    @Query("""
+            select i from Issue i where i.projectId = :projectId and i.type <> :excludedType
+            and i.id in (select il.issueId from IssueLabel il where il.labelId = :labelId)
+            order by i.createdAt asc
+            """)
+    List<Issue> findAllByProjectIdAndLabelIdAndTypeNotOrderByCreatedAtAsc(@Param("projectId") UUID projectId,
+            @Param("labelId") UUID labelId, @Param("excludedType") IssueType excludedType);
+
+    /** Component-scoped variant of {@link #findAllByProjectIdAndLabelIdAndTypeNotOrderByCreatedAtAsc}. */
+    @Query("""
+            select i from Issue i where i.projectId = :projectId and i.type <> :excludedType
+            and i.id in (select ic.issueId from IssueComponent ic where ic.componentId = :componentId)
+            order by i.createdAt asc
+            """)
+    List<Issue> findAllByProjectIdAndComponentIdAndTypeNotOrderByCreatedAtAsc(@Param("projectId") UUID projectId,
+            @Param("componentId") UUID componentId, @Param("excludedType") IssueType excludedType);
 }

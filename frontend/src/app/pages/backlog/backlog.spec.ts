@@ -56,6 +56,8 @@ function issue(key: string, overrides: Partial<Issue> = {}): Issue {
     resolvedAt: null,
     sprintId: null,
     parentId: null,
+    labels: [],
+    components: [],
     ...overrides,
   };
 }

@@ -114,6 +114,40 @@
         }
       }
 
+      <div class="chip-field">
+        <span class="chip-field-label" id="labels-heading">Labels</span>
+        <div class="chip-list" role="group" aria-labelledby="labels-heading">
+          @for (label of allLabels(); track label.id) {
+            <app-label-chip
+              [label]="label"
+              [selectable]="true"
+              [selected]="isLabelSelected(label.id)"
+              [disabled]="!canManage()"
+              (toggled)="toggleDraftLabel(label.id)"
+            />
+          } @empty {
+            <span class="chip-field-empty">No labels in this project yet.</span>
+          }
+        </div>
+      </div>
+
+      <div class="chip-field">
+        <span class="chip-field-label" id="components-heading">Components</span>
+        <div class="chip-list" role="group" aria-labelledby="components-heading">
+          @for (component of allComponents(); track component.id) {
+            <app-component-chip
+              [component]="component"
+              [selectable]="true"
+              [selected]="isComponentSelected(component.id)"
+              [disabled]="!canManage()"
+              (toggled)="toggleDraftComponent(component.id)"
+            />
+          } @empty {
+            <span class="chip-field-empty">No components in this project yet.</span>
+          }
+        </div>
+      </div>
+
       <label class="description-label">
         Description
         <textarea

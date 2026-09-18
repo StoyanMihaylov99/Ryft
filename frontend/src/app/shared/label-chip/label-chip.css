@@ -1,0 +1,60 @@
+:host {
+  display: contents;
+}
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1875rem;
+  max-width: 160px;
+  min-width: 0;
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
+  border: none;
+  line-height: 1.4;
+  /* `contrastTextColor()` only guarantees legible TEXT — the fill itself is an arbitrary,
+   * user-chosen color that can be near-white (dark theme) or near-black (light theme) and
+   * disappear against the card background. This inset boundary is independent of that color. */
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+/*
+ * `:host-context()` (not `:root […]`) because Angular's emulated encapsulation appends the
+ * component's content attribute to every compound selector segment — see sidebar.css for the
+ * fuller explanation of why `:root[data-theme='light'] .label-chip` would silently never match.
+ */
+:host-context([data-theme='light']) .label-chip {
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.label-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.label-chip {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+button.label-chip.selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button.label-chip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+button.label-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.check {
+  font-weight: 700;
+}

@@ -41,6 +41,14 @@
   border-radius: 4px;
 }
 
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
 .issue-title {
   margin: 0;
   font-size: 0.8125rem;

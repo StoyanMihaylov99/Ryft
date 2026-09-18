@@ -109,7 +109,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
-                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, storyPoints, null))))
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, storyPoints, null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         return objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);

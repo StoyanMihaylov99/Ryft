@@ -21,13 +21,17 @@ import {
   IssuePriority,
   IssueStatus,
   IssueType,
+  Label,
+  ProjectComponent,
   UpdateIssueRequest,
 } from '../../../core/issue/models';
 import { IssueService } from '../../../core/issue/issue.service';
+import { ComponentChip } from '../../../shared/component-chip/component-chip';
 import { IssueTypeBadge } from '../../../shared/issue-type-badge/issue-type-badge';
+import { LabelChip } from '../../../shared/label-chip/label-chip';
 
 @Component({
-  imports: [DatePipe, A11yModule, IssueTypeBadge],
+  imports: [DatePipe, A11yModule, IssueTypeBadge, LabelChip, ComponentChip],
   selector: 'app-issue-detail-panel',
   templateUrl: './issue-detail-panel.html',
   styleUrl: './issue-detail-panel.css',
@@ -65,6 +69,11 @@ export class IssueDetailPanel {
    *  independent of which issue is currently open. */
   readonly projectIssues = signal<Issue[]>([]);
 
+  /** All Labels/Components defined for this project, for the toggle-chip attach UI — loaded once
+   *  per projectKey, same lifecycle as `projectIssues`. */
+  readonly allLabels = signal<Label[]>([]);
+  readonly allComponents = signal<ProjectComponent[]>([]);
+
   /** The key currently being displayed, which drifts from `issueKey()` once the user drills into a
    *  subtask — see `openSubtask`. Doubles as the race-guard for in-flight requests: a response is
    *  only applied if this still matches the key it was requested for. */
@@ -88,6 +97,15 @@ export class IssueDetailPanel {
   readonly draftStoryPoints = signal<number | null>(null);
   readonly draftStatus = signal<IssueStatus>('TODO');
   readonly draftParentId = signal<string | null>(null);
+  readonly draftLabelIds = signal<string[]>([]);
+  readonly draftComponentIds = signal<string[]>([]);
+  /** Whether the user has touched the label/component selection since it was last loaded/saved —
+   *  distinct from "the selection differs from the original", since toggling something on then
+   *  back off leaves the *content* unchanged but must still be treated as touched. This is what
+   *  lets `buildPatchRequest` tell "leave it alone" (omit the field) apart from "clear it" (send
+   *  `[]`), matching UpdateIssueRequest's null-vs-empty-array contract. */
+  readonly labelsTouched = signal(false);
+  readonly componentsTouched = signal(false);
   readonly saving = signal(false);
 
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
@@ -169,6 +187,7 @@ export class IssueDetailPanel {
       const projectKey = this.projectKey();
       if (projectKey) {
         this.loadProjectIssues(projectKey);
+        this.loadLabelsAndComponents(projectKey);
       }
     });
   }
@@ -268,6 +287,19 @@ export class IssueDetailPanel {
     });
   }
 
+  private loadLabelsAndComponents(projectKey: string): void {
+    this.issueService.listLabels(projectKey).subscribe({
+      next: (labels) => this.allLabels.set(labels),
+      // Non-critical: the Labels field just has no options to toggle.
+      error: () => {},
+    });
+    this.issueService.listComponents(projectKey).subscribe({
+      next: (components) => this.allComponents.set(components),
+      // Non-critical: the Components field just has no options to toggle.
+      error: () => {},
+    });
+  }
+
   /** Swaps the panel to show a subtask in place of its parent — a lightweight drill-down rather
    *  than a full navigation stack, since there's nowhere further to drill from a Subtask (it can't
    *  have subtasks of its own). Closing the panel from here returns to the board, not to the parent. */
@@ -329,6 +361,38 @@ export class IssueDetailPanel {
     this.draftStoryPoints.set(issue.storyPoints);
     this.draftStatus.set(issue.status);
     this.draftParentId.set(issue.parentId);
+    this.draftLabelIds.set(issue.labels.map((label) => label.id));
+    this.draftComponentIds.set(issue.components.map((component) => component.id));
+    this.labelsTouched.set(false);
+    this.componentsTouched.set(false);
+  }
+
+  isLabelSelected(labelId: string): boolean {
+    return this.draftLabelIds().includes(labelId);
+  }
+
+  isComponentSelected(componentId: string): boolean {
+    return this.draftComponentIds().includes(componentId);
+  }
+
+  toggleDraftLabel(labelId: string): void {
+    if (!this.canManage()) {
+      return;
+    }
+    this.labelsTouched.set(true);
+    this.draftLabelIds.update((ids) =>
+      ids.includes(labelId) ? ids.filter((id) => id !== labelId) : [...ids, labelId],
+    );
+  }
+
+  toggleDraftComponent(componentId: string): void {
+    if (!this.canManage()) {
+      return;
+    }
+    this.componentsTouched.set(true);
+    this.draftComponentIds.update((ids) =>
+      ids.includes(componentId) ? ids.filter((id) => id !== componentId) : [...ids, componentId],
+    );
   }
 
   updateDraftTitle(value: string): void {
@@ -459,6 +523,16 @@ export class IssueDetailPanel {
     // surfaces that constraint to the user instead.
     if (this.draftParentId() !== issue.parentId && !this.attemptingToUnlinkEpic()) {
       request.parentId = this.draftParentId();
+    }
+    // Only send labelIds/componentIds once the user has actually touched the selection — sending
+    // them unconditionally would send `[]` (and silently clear existing labels/components) even
+    // when the user never opened that section. See UpdateIssueRequest's javadoc for why `[]` and
+    // "omitted" mean different things here, unlike every other field on this request.
+    if (this.labelsTouched()) {
+      request.labelIds = this.draftLabelIds();
+    }
+    if (this.componentsTouched()) {
+      request.componentIds = this.draftComponentIds();
     }
     return Object.keys(request).length > 0 ? request : null;
   }
