@@ -17,6 +17,9 @@
             {{ showMembersPanel() ? 'Close' : 'Members' }}
           </button>
           @if (canManageIssues()) {
+            <button type="button" class="secondary" (click)="toggleLabelsPanel()">
+              {{ showLabelsPanel() ? 'Close' : 'Labels & components' }}
+            </button>
             <button type="button" class="submit" (click)="toggleCreateForm()">
               {{ showCreateForm() ? 'Cancel' : '+ Create issue' }}
             </button>
@@ -90,6 +93,113 @@
         </div>
       }
 
+      @if (showLabelsPanel() && canManageIssues()) {
+        <div class="card labels-panel">
+          <h2>Labels</h2>
+
+          @if (labelError()) {
+            <div class="banner" role="alert">{{ labelError() }}</div>
+          }
+
+          <ul class="chip-manage-list">
+            @for (label of labels(); track label.id) {
+              <li class="chip-manage-row">
+                <input
+                  type="color"
+                  [value]="label.color"
+                  [attr.aria-label]="'Color for ' + label.name"
+                  (change)="recolorLabel(label.id, $any($event.target).value)"
+                />
+                <label class="visually-hidden" [attr.for]="'label-name-' + label.id"
+                  >Name for {{ label.name }}</label
+                >
+                <input
+                  type="text"
+                  [id]="'label-name-' + label.id"
+                  [value]="label.name"
+                  (blur)="renameLabel(label.id, $any($event.target).value)"
+                />
+                <button type="button" class="remove-btn" (click)="deleteLabel(label.id)">
+                  Remove
+                </button>
+              </li>
+            } @empty {
+              <li class="chip-manage-empty">No labels yet.</li>
+            }
+          </ul>
+
+          <form class="chip-add-form" (submit)="$event.preventDefault(); submitNewLabel()">
+            <label class="visually-hidden" for="new-label-name">New label name</label>
+            <input
+              id="new-label-name"
+              type="text"
+              placeholder="Label name…"
+              [value]="newLabelName()"
+              (input)="newLabelName.set($any($event.target).value)"
+            />
+            <label class="visually-hidden" for="new-label-color">New label color</label>
+            <input
+              id="new-label-color"
+              type="color"
+              [value]="newLabelColor()"
+              (input)="newLabelColor.set($any($event.target).value)"
+            />
+            <button
+              type="submit"
+              class="submit"
+              [disabled]="creatingLabel() || !newLabelName().trim()"
+            >
+              {{ creatingLabel() ? 'Adding…' : 'Add label' }}
+            </button>
+          </form>
+
+          <h2 class="components-heading">Components</h2>
+
+          @if (componentError()) {
+            <div class="banner" role="alert">{{ componentError() }}</div>
+          }
+
+          <ul class="chip-manage-list">
+            @for (component of components(); track component.id) {
+              <li class="chip-manage-row">
+                <label class="visually-hidden" [attr.for]="'component-name-' + component.id"
+                  >Name for {{ component.name }}</label
+                >
+                <input
+                  type="text"
+                  [id]="'component-name-' + component.id"
+                  [value]="component.name"
+                  (blur)="renameComponent(component.id, $any($event.target).value)"
+                />
+                <button type="button" class="remove-btn" (click)="deleteComponent(component.id)">
+                  Remove
+                </button>
+              </li>
+            } @empty {
+              <li class="chip-manage-empty">No components yet.</li>
+            }
+          </ul>
+
+          <form class="chip-add-form" (submit)="$event.preventDefault(); submitNewComponent()">
+            <label class="visually-hidden" for="new-component-name">New component name</label>
+            <input
+              id="new-component-name"
+              type="text"
+              placeholder="Component name…"
+              [value]="newComponentName()"
+              (input)="newComponentName.set($any($event.target).value)"
+            />
+            <button
+              type="submit"
+              class="submit"
+              [disabled]="creatingComponent() || !newComponentName().trim()"
+            >
+              {{ creatingComponent() ? 'Adding…' : 'Add component' }}
+            </button>
+          </form>
+        </div>
+      }
+
       @if (showCreateForm() && canManageIssues()) {
         <div class="card create-card">
           <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
@@ -121,6 +231,70 @@
               {{ creating() ? 'Creating…' : 'Create' }}
             </button>
           </form>
+
+          @if (labels().length || components().length) {
+            <div class="create-chip-fields">
+              @if (labels().length) {
+                <div class="chip-field">
+                  <span class="chip-field-label" id="create-labels-heading">Labels</span>
+                  <div class="chip-list" role="group" aria-labelledby="create-labels-heading">
+                    @for (label of labels(); track label.id) {
+                      <app-label-chip
+                        [label]="label"
+                        [selectable]="true"
+                        [selected]="isCreateLabelSelected(label.id)"
+                        (toggled)="toggleCreateLabel(label.id)"
+                      />
+                    }
+                  </div>
+                </div>
+              }
+              @if (components().length) {
+                <div class="chip-field">
+                  <span class="chip-field-label" id="create-components-heading">Components</span>
+                  <div class="chip-list" role="group" aria-labelledby="create-components-heading">
+                    @for (component of components(); track component.id) {
+                      <app-component-chip
+                        [component]="component"
+                        [selectable]="true"
+                        [selected]="isCreateComponentSelected(component.id)"
+                        (toggled)="toggleCreateComponent(component.id)"
+                      />
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+
+      @if (labels().length || components().length) {
+        <div class="board-filters">
+          <label class="filter-field">
+            Filter by label
+            <select
+              [value]="labelFilter() ?? ''"
+              (change)="setLabelFilter($any($event.target).value || null)"
+            >
+              <option value="">All labels</option>
+              @for (label of labels(); track label.id) {
+                <option [value]="label.id">{{ label.name }}</option>
+              }
+            </select>
+          </label>
+          <label class="filter-field">
+            Filter by component
+            <select
+              [value]="componentFilter() ?? ''"
+              (change)="setComponentFilter($any($event.target).value || null)"
+            >
+              <option value="">All components</option>
+              @for (component of components(); track component.id) {
+                <option [value]="component.id">{{ component.name }}</option>
+              }
+            </select>
+          </label>
         </div>
       }
 
@@ -131,7 +305,10 @@
           @for (column of boardValue.columns; track column.statusId) {
             <div class="column">
               <h2>
-                {{ column.name }} <span class="count">{{ column.issues.length }}</span>
+                {{ column.name }}
+                <span class="count">{{
+                  isFiltering() ? visibleIssueCount(column) : column.issues.length
+                }}</span>
               </h2>
               <div
                 cdkDropList
@@ -142,7 +319,14 @@
                 class="issue-list"
               >
                 @for (issue of column.issues; track issue.id) {
-                  <button type="button" class="issue-card" cdkDrag (click)="openIssue(issue.key)">
+                  <button
+                    type="button"
+                    class="issue-card"
+                    [class.filtered-out]="!issueMatchesFilter(issue)"
+                    cdkDrag
+                    [cdkDragDisabled]="isFiltering()"
+                    (click)="openIssue(issue.key)"
+                  >
                     <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
                   </button>
                 } @empty {
@@ -154,6 +338,9 @@
                       </button>
                     }
                   </p>
+                }
+                @if (column.issues.length > 0 && visibleIssueCount(column) === 0) {
+                  <p class="column-empty">No issues match the current filter.</p>
                 }
               </div>
             </div>

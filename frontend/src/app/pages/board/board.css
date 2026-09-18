@@ -38,6 +38,7 @@ h1 {
 .header-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.625rem;
 }
 
@@ -147,13 +148,8 @@ h1 {
   font-family: inherit;
 }
 
-.create-card input:focus,
-.create-card select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.members-panel h2 {
+.members-panel h2,
+.labels-panel h2 {
   margin: 0 0 1rem;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -260,7 +256,8 @@ h1 {
 }
 
 .invite-form input,
-.invite-form select {
+.invite-form select,
+.chip-add-form input[type='text'] {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -270,10 +267,141 @@ h1 {
   font-family: inherit;
 }
 
+.create-card input:focus,
+.create-card select:focus,
 .invite-form input:focus,
-.invite-form select:focus {
+.invite-form select:focus,
+.chip-add-form input:focus,
+.chip-manage-row input[type='text']:focus,
+.filter-field select:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+.labels-panel .components-heading {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.chip-manage-list {
+  list-style: none;
+  margin: 0 0 0.875rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chip-manage-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+}
+
+.chip-manage-row input[type='text'] {
+  flex: 1;
+  min-width: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+}
+
+.chip-manage-row input[type='text']:hover,
+.chip-manage-row input[type='text']:focus {
+  border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+.chip-manage-empty {
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  padding: 0.375rem 0.5rem;
+}
+
+.chip-add-form {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.chip-add-form input[type='text'] {
+  flex: 1;
+  min-width: 0;
+}
+
+.chip-manage-row input[type='color'],
+.chip-add-form input[type='color'] {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.create-chip-fields {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.chip-field {
+  min-width: 0;
+}
+
+.chip-field-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.board-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.filter-field select {
+  padding: 0.4375rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-family: inherit;
+  min-width: 160px;
 }
 
 .board {
@@ -402,6 +530,19 @@ h1 {
   border-color: var(--border);
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
+}
+
+/* Kept in the DOM (not *ngIf'd out) so a filter change never shifts the unfiltered
+ * cdkDropListData array's indices — only visibility changes. Dragging itself is disabled via
+ * [cdkDragDisabled]="isFiltering()" while any filter is active: CDK's DropListRef measures every
+ * registered CdkDrag's getBoundingClientRect() (angular/components#18947), and a display:none
+ * card collapses to an all-zero rect that would corrupt its position-sorted hit-testing list. */
+.issue-card.filtered-out {
+  display: none;
+}
+
+.issue-card.cdk-drag-disabled {
+  cursor: default;
 }
 
 .cdk-drag-preview {

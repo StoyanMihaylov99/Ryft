@@ -40,6 +40,8 @@ function issue(key: string, status: Issue['status'], overrides: Partial<Issue> =
     resolvedAt: null,
     sprintId: 's1',
     parentId: null,
+    labels: [],
+    components: [],
     ...overrides,
   };
 }

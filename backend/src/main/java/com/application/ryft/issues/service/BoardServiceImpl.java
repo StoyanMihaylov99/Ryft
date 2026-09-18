@@ -25,12 +25,14 @@ public class BoardServiceImpl implements BoardService {
     private final IssueRepository issueRepository;
     private final IssueProjectAccess projectAccess;
     private final WorkflowService workflowService;
+    private final IssueLabelingService issueLabelingService;
 
     public BoardServiceImpl(IssueRepository issueRepository, IssueProjectAccess projectAccess,
-            WorkflowService workflowService) {
+            WorkflowService workflowService, IssueLabelingService issueLabelingService) {
         this.issueRepository = issueRepository;
         this.projectAccess = projectAccess;
         this.workflowService = workflowService;
+        this.issueLabelingService = issueLabelingService;
     }
 
     /**
@@ -82,9 +84,9 @@ public class BoardServiceImpl implements BoardService {
      * {@code WorkflowStatus} row, replaces this with a direct id comparison.
      */
     private List<IssueResponse> issuesInCategory(List<Issue> issues, StatusCategory category) {
-        return issues.stream()
+        List<Issue> issuesInStatus = issues.stream()
                 .filter(issue -> issue.getStatus().name().equals(category.name()))
-                .map(IssueResponse::from)
                 .toList();
+        return issueLabelingService.toResponses(issuesInStatus);
     }
 }

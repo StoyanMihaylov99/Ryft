@@ -28,6 +28,16 @@ public interface IssueService {
      */
     List<IssueResponse> listForProjectByEpic(UUID callerId, String projectKey, UUID epicId);
 
+    /**
+     * Label-scoped variant of {@link #listForProject(UUID, String)} — filters to issues with the given
+     * Label attached. Wired the same way as the {@code sprintId}/{@code epicId} filters (see
+     * {@code ProjectIssuesController} for the precedence rule when several filters are passed together).
+     */
+    List<IssueResponse> listForProjectByLabel(UUID callerId, String projectKey, UUID labelId);
+
+    /** Component-scoped variant of {@link #listForProject(UUID, String)} — filters to issues with the given Component attached. */
+    List<IssueResponse> listForProjectByComponent(UUID callerId, String projectKey, UUID componentId);
+
     /** Issues with no sprint assigned, ordered by their manual backlog rank. */
     List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey);
 

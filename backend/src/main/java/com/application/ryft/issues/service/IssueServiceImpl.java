@@ -37,13 +37,16 @@ public class IssueServiceImpl implements IssueService {
     private final IssueKeySequenceRepository issueKeySequenceRepository;
     private final IssueProjectAccess projectAccess;
     private final CommentRepository commentRepository;
+    private final IssueLabelingService issueLabelingService;
 
     public IssueServiceImpl(IssueRepository issueRepository, IssueKeySequenceRepository issueKeySequenceRepository,
-            IssueProjectAccess projectAccess, CommentRepository commentRepository) {
+            IssueProjectAccess projectAccess, CommentRepository commentRepository,
+            IssueLabelingService issueLabelingService) {
         this.issueRepository = issueRepository;
         this.issueKeySequenceRepository = issueKeySequenceRepository;
         this.projectAccess = projectAccess;
         this.commentRepository = commentRepository;
+        this.issueLabelingService = issueLabelingService;
     }
 
     @Override
@@ -55,6 +58,7 @@ public class IssueServiceImpl implements IssueService {
             requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
         }
         validateParentOnCreate(request.type(), request.parentId(), project.id());
+        issueLabelingService.validateOnCreate(project.id(), request.labelIds(), request.componentIds());
 
         IssuePriority priority = request.priority() != null ? request.priority() : IssuePriority.MEDIUM;
         String description = request.description() == null ? null : request.description().trim();
@@ -65,55 +69,66 @@ public class IssueServiceImpl implements IssueService {
                 priority, request.assigneeId(), callerId, rank);
         issue.setStoryPoints(request.storyPoints());
         issue.setParentIssueId(request.parentId());
-        return IssueResponse.from(issueRepository.save(issue));
+        Issue saved = issueRepository.save(issue);
+        issueLabelingService.attachOnCreate(saved, project.id(), request.labelIds(), request.componentIds());
+        return issueLabelingService.toResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(project.id(), IssueType.SUBTASK).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(
+                issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(project.id(), IssueType.SUBTASK));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProject(UUID callerId, String projectKey, UUID sprintId) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId,
-                IssueType.SUBTASK).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(issueRepository
+                .findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId, IssueType.SUBTASK));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(project.id(),
-                IssueType.SUBTASK).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(issueRepository
+                .findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(project.id(), IssueType.SUBTASK));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProjectByEpic(UUID callerId, String projectKey, UUID epicId) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(project.id(), epicId).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(
+                issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(project.id(), epicId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<IssueResponse> listForProjectByLabel(UUID callerId, String projectKey, UUID labelId) {
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        return issueLabelingService.toResponses(issueRepository
+                .findAllByProjectIdAndLabelIdAndTypeNotOrderByCreatedAtAsc(project.id(), labelId, IssueType.SUBTASK));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<IssueResponse> listForProjectByComponent(UUID callerId, String projectKey, UUID componentId) {
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        return issueLabelingService.toResponses(issueRepository
+                .findAllByProjectIdAndComponentIdAndTypeNotOrderByCreatedAtAsc(project.id(), componentId,
+                        IssueType.SUBTASK));
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<IssueResponse> listForSprint(UUID callerId, String projectKey, UUID sprintId) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId,
-                IssueType.SUBTASK).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(issueRepository
+                .findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId, IssueType.SUBTASK));
     }
 
     @Override
@@ -121,7 +136,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse get(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
         projectAccess.requireMembership(callerId, projectKeyOf(issue));
-        return IssueResponse.from(issue);
+        return issueLabelingService.toResponse(issue);
     }
 
     @Override
@@ -133,7 +148,7 @@ public class IssueServiceImpl implements IssueService {
         requireOwnerOrAdmin(callerId, projectKey);
 
         applyUpdate(issue, callerId, projectKey, request);
-        return IssueResponse.from(issue);
+        return issueLabelingService.toResponse(issue);
     }
 
     @Override
@@ -142,7 +157,7 @@ public class IssueServiceImpl implements IssueService {
         Issue issue = requireIssue(issueKey);
         projectAccess.requireMembership(callerId, projectKeyOf(issue));
         setStatus(issue, request.status());
-        return IssueResponse.from(issue);
+        return issueLabelingService.toResponse(issue);
     }
 
     private void applyUpdate(Issue issue, UUID callerId, String projectKey, UpdateIssueRequest request) {
@@ -152,6 +167,8 @@ public class IssueServiceImpl implements IssueService {
         applyAssignee(issue, callerId, projectKey, request);
         applyStoryPoints(issue, request);
         applyParentId(issue, request);
+        issueLabelingService.applyLabels(issue, issue.getProjectId(), request.labelIds());
+        issueLabelingService.applyComponents(issue, issue.getProjectId(), request.componentIds());
     }
 
     private void applyTitle(Issue issue, UpdateIssueRequest request) {
@@ -305,7 +322,7 @@ public class IssueServiceImpl implements IssueService {
         Issue subtask = new Issue(project.id(), subtaskKey, IssueType.SUBTASK, request.title().trim(), description,
                 priority, request.assigneeId(), callerId, rank);
         subtask.setParentIssueId(parent.getId());
-        return IssueResponse.from(issueRepository.save(subtask));
+        return issueLabelingService.toResponse(issueRepository.save(subtask));
     }
 
     @Override
@@ -313,9 +330,8 @@ public class IssueServiceImpl implements IssueService {
     public List<IssueResponse> listSubtasks(UUID callerId, String issueKey) {
         Issue issue = requireIssue(issueKey);
         projectAccess.requireMembership(callerId, projectKeyOf(issue));
-        return issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(issue.getId()).stream()
-                .map(IssueResponse::from)
-                .toList();
+        return issueLabelingService.toResponses(
+                issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(issue.getId()));
     }
 
     @Override
@@ -342,7 +358,7 @@ public class IssueServiceImpl implements IssueService {
         requireOwnerOrAdmin(callerId, projectKey);
 
         issue.setSprintId(sprintId);
-        return IssueResponse.from(issue);
+        return issueLabelingService.toResponse(issue);
     }
 
     @Override
@@ -356,7 +372,7 @@ public class IssueServiceImpl implements IssueService {
         Optional<Issue> beforeIssue = findNeighbor(beforeIssueKey);
         Optional<Issue> afterIssue = findNeighbor(afterIssueKey);
         issue.setBacklogRank(newBacklogRank(issue, beforeIssue, afterIssue));
-        return IssueResponse.from(issue);
+        return issueLabelingService.toResponse(issue);
     }
 
     @Override

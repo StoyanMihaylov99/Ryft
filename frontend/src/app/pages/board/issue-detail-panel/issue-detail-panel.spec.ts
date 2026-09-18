@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Comment } from '../../../core/comment/models';
-import { EpicProgress, Issue } from '../../../core/issue/models';
+import { EpicProgress, Issue, Label, ProjectComponent } from '../../../core/issue/models';
 import { environment } from '../../../../environments/environment';
 import { IssueDetailPanel } from './issue-detail-panel';
 
@@ -25,8 +25,18 @@ function issue(overrides: Partial<Issue> = {}): Issue {
     resolvedAt: null,
     sprintId: null,
     parentId: null,
+    labels: [],
+    components: [],
     ...overrides,
   };
+}
+
+function label(overrides: Partial<Label> = {}): Label {
+  return { id: 'l1', projectId: 'p1', name: 'Frontend', color: '#4287f5', ...overrides };
+}
+
+function projectComponent(overrides: Partial<ProjectComponent> = {}): ProjectComponent {
+  return { id: 'c1', projectId: 'p1', name: 'API', ...overrides };
 }
 
 describe('IssueDetailPanel', () => {
@@ -71,8 +81,14 @@ describe('IssueDetailPanel', () => {
     }
   }
 
-  function flushEpics(epics: Issue[] = []): void {
+  function flushEpics(
+    epics: Issue[] = [],
+    labels: Label[] = [],
+    components: ProjectComponent[] = [],
+  ): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`).flush(epics);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`).flush(labels);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`).flush(components);
   }
 
   it('loads the issue and its comments on creation', () => {
@@ -562,7 +578,11 @@ describe('IssueDetailPanel', () => {
   });
 
   it('fetches and renders progress for an Epic issue', () => {
-    flushLoad(issue({ type: 'EPIC' }), [], [], { totalCount: 7, doneCount: 3, percentDone: 300 / 7 });
+    flushLoad(issue({ type: 'EPIC' }), [], [], {
+      totalCount: 7,
+      doneCount: 3,
+      percentDone: 300 / 7,
+    });
     fixture.detectChanges();
 
     expect(component.epicProgressLabel()).toBe('3/7 done');
@@ -583,8 +603,7 @@ describe('IssueDetailPanel', () => {
 
     expect(component.epicProgressLabel()).toBe('0/0 done');
     expect(component.epicProgressPercent()).toBe(0);
-    const fill = fixture.debugElement.query(By.css('.progress-fill'))
-      .nativeElement as HTMLElement;
+    const fill = fixture.debugElement.query(By.css('.progress-fill')).nativeElement as HTMLElement;
     expect(fill.style.width).toBe('0%');
   });
 
@@ -775,5 +794,100 @@ describe('IssueDetailPanel', () => {
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('.parent-chip'))).toBeNull();
+  });
+
+  describe('labels and components', () => {
+    it("renders every project label/component as a toggle chip, pre-selecting the issue's own", () => {
+      fixture.componentRef.setInput('canManage', true);
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue({ labels: [label()], components: [] }));
+      flushEpics([], [label(), label({ id: 'l2', name: 'Backend' })], [projectComponent()]);
+      fixture.detectChanges();
+
+      const labelChips = fixture.debugElement.queryAll(By.css('app-label-chip button'));
+      expect(labelChips.length).toBe(2);
+      expect(labelChips[0].attributes['aria-pressed']).toBe('true');
+      expect(labelChips[1].attributes['aria-pressed']).toBe('false');
+
+      const componentChip = fixture.debugElement.query(By.css('app-component-chip button'));
+      expect(componentChip.attributes['aria-pressed']).toBe('false');
+    });
+
+    it('stages a label toggle locally without calling the API until Save is clicked', () => {
+      fixture.componentRef.setInput('canManage', true);
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue());
+      flushEpics([], [label()]);
+
+      component.toggleDraftLabel('l1');
+
+      expect(component.isLabelSelected('l1')).toBe(true);
+      httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1`);
+    });
+
+    it('sends the newly selected labelIds when Save is clicked', () => {
+      fixture.componentRef.setInput('canManage', true);
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue());
+      flushEpics([], [label()]);
+
+      component.toggleDraftLabel('l1');
+      component.save();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+      expect(req.request.body).toEqual({ labelIds: ['l1'] });
+      req.flush(issue({ labels: [label()] }));
+
+      expect(component.issue()?.labels.map((l) => l.id)).toEqual(['l1']);
+    });
+
+    it('sends componentIds: [] (not omitted) when the user clears a previously-set selection', () => {
+      fixture.componentRef.setInput('canManage', true);
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue({ components: [projectComponent()] }));
+      flushEpics([], [], [projectComponent()]);
+
+      component.toggleDraftComponent('c1');
+      component.save();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+      expect(req.request.body).toEqual({ componentIds: [] });
+      req.flush(issue({ components: [] }));
+
+      expect(component.issue()?.components).toEqual([]);
+    });
+
+    it('omits labelIds/componentIds entirely when the user never touches the selection', () => {
+      fixture.componentRef.setInput('canManage', true);
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue({ labels: [label()] }));
+      flushEpics([], [label()]);
+
+      component.updateDraftPriority('HIGH');
+      component.save();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`);
+      expect(req.request.body).toEqual({ priority: 'HIGH' });
+      expect(req.request.body.labelIds).toBeUndefined();
+      expect(req.request.body.componentIds).toBeUndefined();
+      req.flush(issue({ labels: [label()], priority: 'HIGH' }));
+    });
+
+    it('does not toggle labels/components when the caller cannot manage issues', () => {
+      // canManage defaults to false
+      fixture.componentRef.setInput('projectKey', 'TRK');
+      fixture.detectChanges();
+      flushLoad(issue());
+      flushEpics([], [label()]);
+
+      component.toggleDraftLabel('l1');
+
+      expect(component.isLabelSelected('l1')).toBe(false);
+    });
   });
 });

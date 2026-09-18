@@ -21,6 +21,8 @@ function issue(overrides: Partial<Issue> = {}): Issue {
     resolvedAt: null,
     sprintId: null,
     parentId: null,
+    labels: [],
+    components: [],
     ...overrides,
   };
 }
@@ -86,5 +88,27 @@ describe('IssueCard', () => {
     render(issue({ parentId: null }));
 
     expect(fixture.debugElement.query(By.css('.epic-chip'))).toBeNull();
+  });
+
+  it('renders a colored chip for each label and a plain chip for each component', () => {
+    render(
+      issue({
+        labels: [{ id: 'l1', projectId: 'p1', name: 'Frontend', color: '#4287f5' }],
+        components: [{ id: 'c1', projectId: 'p1', name: 'API' }],
+      }),
+    );
+
+    const labelChip = fixture.debugElement.query(By.css('app-label-chip .label-chip'));
+    expect(labelChip.nativeElement.textContent).toContain('Frontend');
+    expect(labelChip.nativeElement.style.background).toBe('rgb(66, 135, 245)');
+
+    const componentChip = fixture.debugElement.query(By.css('app-component-chip .component-chip'));
+    expect(componentChip.nativeElement.textContent).toContain('API');
+  });
+
+  it('renders no badge row when the issue has no labels or components', () => {
+    render(issue());
+
+    expect(fixture.debugElement.query(By.css('.badge-row'))).toBeNull();
   });
 });

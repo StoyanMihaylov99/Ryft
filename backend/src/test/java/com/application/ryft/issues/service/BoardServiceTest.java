@@ -10,7 +10,11 @@ import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
+import com.application.ryft.issues.repository.ComponentRepository;
+import com.application.ryft.issues.repository.IssueComponentRepository;
+import com.application.ryft.issues.repository.IssueLabelRepository;
 import com.application.ryft.issues.repository.IssueRepository;
+import com.application.ryft.issues.repository.LabelRepository;
 import com.application.ryft.projects.dto.ProjectResponse;
 import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
 import com.application.ryft.workflow.dto.WorkflowStatusResponse;
@@ -37,6 +41,18 @@ class BoardServiceTest {
     @Mock
     private WorkflowService workflowService;
 
+    @Mock
+    private IssueLabelRepository issueLabelRepository;
+
+    @Mock
+    private LabelRepository labelRepository;
+
+    @Mock
+    private IssueComponentRepository issueComponentRepository;
+
+    @Mock
+    private ComponentRepository componentRepository;
+
     private BoardServiceImpl boardService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -46,7 +62,9 @@ class BoardServiceTest {
 
     @BeforeEach
     void setUp() {
-        boardService = new BoardServiceImpl(issueRepository, projectAccess, workflowService);
+        IssueLabelingService issueLabelingService = new IssueLabelingService(issueLabelRepository, labelRepository,
+                issueComponentRepository, componentRepository);
+        boardService = new BoardServiceImpl(issueRepository, projectAccess, workflowService, issueLabelingService);
     }
 
     private WorkflowSchemeResponse defaultScheme() {

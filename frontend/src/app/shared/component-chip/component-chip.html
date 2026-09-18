@@ -1,0 +1,17 @@
+@if (selectable()) {
+  <button
+    type="button"
+    class="component-chip"
+    [class.selected]="selected()"
+    [attr.aria-pressed]="selected()"
+    [disabled]="disabled()"
+    (click)="toggled.emit()"
+  >
+    @if (selected()) {
+      <span class="check" aria-hidden="true">✓</span>
+    }
+    <span class="component-chip-name">{{ component().name }}</span>
+  </button>
+} @else {
+  <span class="component-chip">{{ component().name }}</span>
+}

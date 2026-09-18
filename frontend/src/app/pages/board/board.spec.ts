@@ -7,7 +7,7 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Board as BoardModel } from '../../core/board/models';
-import { Issue } from '../../core/issue/models';
+import { Issue, Label, ProjectComponent } from '../../core/issue/models';
 import { ProjectMember } from '../../core/project/models';
 import { Board } from './board';
 
@@ -40,6 +40,8 @@ function issue(key: string, status: Issue['status'], overrides: Partial<Issue> =
     resolvedAt: null,
     sprintId: null,
     parentId: null,
+    labels: [],
+    components: [],
     ...overrides,
   };
 }
@@ -115,9 +117,16 @@ describe('Board', () => {
     httpMock.verify();
   });
 
-  function flushInitialBoard(board: BoardModel, members: ProjectMember[] = []): void {
+  function flushInitialBoard(
+    board: BoardModel,
+    members: ProjectMember[] = [],
+    labels: Label[] = [],
+    components: ProjectComponent[] = [],
+  ): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(board);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush(members);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`).flush(labels);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`).flush(components);
   }
 
   it('loads the board on creation', () => {
@@ -153,6 +162,8 @@ describe('Board', () => {
     httpMock
       .expectOne(`${environment.apiBaseUrl}/projects/TRK/members`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`).flush([]);
 
     expect(component.canManageIssues()).toBe(false);
   });
@@ -403,5 +414,231 @@ describe('Board', () => {
 
     expect(component.board()!.columns[0].issues).toHaveLength(0);
     expect(component.selectedIssueKey()).toBeNull();
+  });
+
+  function label(overrides: Partial<Label> = {}): Label {
+    return { id: 'l1', projectId: 'p1', name: 'Frontend', color: '#4287f5', ...overrides };
+  }
+
+  function projectComponent(overrides: Partial<ProjectComponent> = {}): ProjectComponent {
+    return { id: 'c1', projectId: 'p1', name: 'API', ...overrides };
+  }
+
+  describe('client-side board filtering', () => {
+    it('matches an issue only when it has the selected label', () => {
+      const withLabel = issue('TRK-1', 'TODO', { labels: [label()] });
+      const withoutLabel = issue('TRK-2', 'TODO');
+      flushInitialBoard(boardWith(withLabel, withoutLabel));
+
+      expect(component.issueMatchesFilter(withLabel)).toBe(true);
+      expect(component.issueMatchesFilter(withoutLabel)).toBe(true);
+
+      component.setLabelFilter('l1');
+
+      expect(component.issueMatchesFilter(withLabel)).toBe(true);
+      expect(component.issueMatchesFilter(withoutLabel)).toBe(false);
+    });
+
+    it('ANDs the label and component filters together', () => {
+      const both = issue('TRK-1', 'TODO', {
+        labels: [label()],
+        components: [projectComponent()],
+      });
+      const labelOnly = issue('TRK-2', 'TODO', { labels: [label()] });
+      flushInitialBoard(boardWith(both, labelOnly));
+
+      component.setLabelFilter('l1');
+      component.setComponentFilter('c1');
+
+      expect(component.issueMatchesFilter(both)).toBe(true);
+      expect(component.issueMatchesFilter(labelOnly)).toBe(false);
+    });
+
+    it('does not remove filtered-out cards from the board model, only hides them', () => {
+      const withLabel = issue('TRK-1', 'TODO', { labels: [label()] });
+      const withoutLabel = issue('TRK-2', 'TODO');
+      flushInitialBoard(boardWith(withLabel, withoutLabel));
+      component.setLabelFilter('l1');
+      fixture.detectChanges();
+
+      expect(component.board()!.columns[0].issues).toHaveLength(2);
+      const hiddenCard = fixture.debugElement
+        .queryAll(By.css('.issue-card'))
+        .find((el) => el.nativeElement.textContent.includes('TRK-2'));
+      expect(hiddenCard!.classes['filtered-out']).toBe(true);
+    });
+
+    it('resets the label filter when the filtered label is deleted', () => {
+      flushInitialBoard(boardWith(), [], [label()]);
+
+      component.setLabelFilter('l1');
+      expect(component.labelFilter()).toBe('l1');
+
+      component.deleteLabel('l1');
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels/l1`).flush(null);
+
+      expect(component.labelFilter()).toBeNull();
+    });
+
+    it('isFiltering reflects whether either filter is active', () => {
+      flushInitialBoard(boardWith(), [], [label()], [projectComponent()]);
+
+      expect(component.isFiltering()).toBe(false);
+
+      component.setLabelFilter('l1');
+      expect(component.isFiltering()).toBe(true);
+
+      component.setLabelFilter(null);
+      component.setComponentFilter('c1');
+      expect(component.isFiltering()).toBe(true);
+
+      component.setComponentFilter(null);
+      expect(component.isFiltering()).toBe(false);
+    });
+
+    it('disables dragging on every card while a filter is active, to avoid CDK measuring hidden cards’ collapsed rects', () => {
+      const withLabel = issue('TRK-1', 'TODO', { labels: [label()] });
+      flushInitialBoard(boardWith(withLabel), [], [label()]);
+      fixture.detectChanges();
+      const card = () => fixture.debugElement.query(By.css('.issue-card'));
+
+      expect(card().classes['cdk-drag-disabled']).toBeFalsy();
+
+      component.setLabelFilter('l1');
+      fixture.detectChanges();
+
+      expect(card().classes['cdk-drag-disabled']).toBe(true);
+    });
+  });
+
+  describe('attaching labels/components on create', () => {
+    it('sends the toggled labelIds/componentIds when creating an issue', () => {
+      flushInitialBoard(boardWith(), [], [label()], [projectComponent()]);
+
+      component.createForm.setValue({ type: 'TASK', title: 'New task', parentId: null });
+      component.toggleCreateLabel('l1');
+      component.toggleCreateComponent('c1');
+      component.submitCreate();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`);
+      expect(req.request.body).toEqual({
+        type: 'TASK',
+        title: 'New task',
+        labelIds: ['l1'],
+        componentIds: ['c1'],
+      });
+      req.flush(issue('TRK-1', 'TODO', { labels: [label()], components: [projectComponent()] }));
+    });
+
+    it('omits labelIds/componentIds when none are toggled', () => {
+      flushInitialBoard(boardWith(), [], [label()]);
+
+      component.createForm.setValue({ type: 'TASK', title: 'New task', parentId: null });
+      component.submitCreate();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`);
+      expect(req.request.body).toEqual({ type: 'TASK', title: 'New task' });
+      req.flush(issue('TRK-1', 'TODO'));
+    });
+
+    it('resets the staged label/component selection when the create form is toggled closed', () => {
+      flushInitialBoard(boardWith(), [], [label()]);
+
+      component.toggleCreateLabel('l1');
+      expect(component.isCreateLabelSelected('l1')).toBe(true);
+
+      component.toggleCreateForm();
+
+      expect(component.isCreateLabelSelected('l1')).toBe(false);
+    });
+  });
+
+  describe('labels & components management', () => {
+    it('adds a newly created label to the list', () => {
+      flushInitialBoard(boardWith());
+
+      component.newLabelName.set('Frontend');
+      component.newLabelColor.set('#4287f5');
+      component.submitNewLabel();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`);
+      expect(req.request.body).toEqual({ name: 'Frontend', color: '#4287f5' });
+      req.flush(label());
+
+      expect(component.labels()).toEqual([label()]);
+      expect(component.newLabelName()).toBe('');
+    });
+
+    it('removes a label optimistically and restores it on failure', () => {
+      flushInitialBoard(boardWith(), [], [label()]);
+
+      component.deleteLabel('l1');
+      expect(component.labels()).toEqual([]);
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/labels/l1`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.labels()).toEqual([label()]);
+      expect(component.labelError()).toContain('Failed to delete');
+    });
+
+    it('restores the label filter if deleting the currently-filtered label fails', () => {
+      flushInitialBoard(boardWith(), [], [label()]);
+      component.setLabelFilter('l1');
+
+      component.deleteLabel('l1');
+      expect(component.labelFilter()).toBeNull();
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/labels/l1`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.labels()).toEqual([label()]);
+      expect(component.labelFilter()).toBe('l1');
+    });
+
+    it('adds a newly created component to the list', () => {
+      flushInitialBoard(boardWith());
+
+      component.newComponentName.set('API');
+      component.submitNewComponent();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`);
+      expect(req.request.body).toEqual({ name: 'API' });
+      req.flush(projectComponent());
+
+      expect(component.components()).toEqual([projectComponent()]);
+      expect(component.newComponentName()).toBe('');
+    });
+
+    it('removes a component optimistically and restores it on failure', () => {
+      flushInitialBoard(boardWith(), [], [], [projectComponent()]);
+
+      component.deleteComponent('c1');
+      expect(component.components()).toEqual([]);
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/components/c1`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.components()).toEqual([projectComponent()]);
+      expect(component.componentError()).toContain('Failed to delete');
+    });
+
+    it('restores the component filter if deleting the currently-filtered component fails', () => {
+      flushInitialBoard(boardWith(), [], [], [projectComponent()]);
+      component.setComponentFilter('c1');
+
+      component.deleteComponent('c1');
+      expect(component.componentFilter()).toBeNull();
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/components/c1`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.components()).toEqual([projectComponent()]);
+      expect(component.componentFilter()).toBe('c1');
+    });
   });
 });
