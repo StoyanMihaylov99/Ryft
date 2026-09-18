@@ -17,6 +17,8 @@ import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateCommentRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
+import com.application.ryft.issues.dto.CreateSubtaskRequest;
+import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.ReorderBacklogIssueRequest;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -781,5 +783,111 @@ class IssueControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/issues/{issueKey}", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void epicProgressWithMixOfDoneAndNotDoneLinkedIssuesComputesPercent() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+        IssueResponse epic = createIssueOfType(key, token, IssueType.EPIC, "Epic title", null);
+        IssueResponse done = createIssueOfType(key, token, IssueType.STORY, "Done story", epic.id());
+        createIssueOfType(key, token, IssueType.TASK, "Not done task", epic.id());
+        createIssueOfType(key, token, IssueType.BUG, "Not done bug", epic.id());
+        createIssueOfType(key, token, IssueType.STORY, "Unrelated story", null);
+
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", done.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", epic.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        EpicProgressResponse progress = objectMapper.readValue(result.getResponse().getContentAsString(),
+                EpicProgressResponse.class);
+        assertThat(progress.totalCount()).isEqualTo(3);
+        assertThat(progress.doneCount()).isEqualTo(1);
+        assertThat(progress.percentDone()).isCloseTo(33.33, org.assertj.core.data.Offset.offset(0.01));
+    }
+
+    @Test
+    void epicProgressWithNoLinkedIssuesReturnsZeroPercent() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+        IssueResponse epic = createIssueOfType(key, token, IssueType.EPIC, "Empty epic", null);
+
+        MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", epic.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        EpicProgressResponse progress = objectMapper.readValue(result.getResponse().getContentAsString(),
+                EpicProgressResponse.class);
+        assertThat(progress).isEqualTo(new EpicProgressResponse(0, 0, 0.0));
+    }
+
+    @Test
+    void epicProgressOnNonEpicIssueReturns400() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+        IssueResponse story = createIssueOfType(key, token, IssueType.STORY, "Not an epic", null);
+
+        mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", story.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void epicProgressOfUnknownKeyReturns404() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+
+        mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", "NOPE-1")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void epicProgressDoesNotCountSubtasksOfALinkedStory() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+        IssueResponse epic = createIssueOfType(key, token, IssueType.EPIC, "Epic title", null);
+        IssueResponse story = createIssueOfType(key, token, IssueType.STORY, "Linked story", epic.id());
+
+        MvcResult subtaskResult = mockMvc.perform(post("/api/v1/issues/{issueKey}/subtasks", story.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateSubtaskRequest("Checklist item", null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse subtask = objectMapper.readValue(subtaskResult.getResponse().getContentAsString(),
+                IssueResponse.class);
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", subtask.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                .andExpect(status().isOk());
+
+        MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", epic.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        EpicProgressResponse progress = objectMapper.readValue(result.getResponse().getContentAsString(),
+                EpicProgressResponse.class);
+        // The subtask being DONE must not count toward the epic's progress — only its parent story does,
+        // and that story is still not DONE.
+        assertThat(progress.totalCount()).isEqualTo(1);
+        assertThat(progress.doneCount()).isEqualTo(0);
+        assertThat(progress.percentDone()).isEqualTo(0.0);
     }
 }

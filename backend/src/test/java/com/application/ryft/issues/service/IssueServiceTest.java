@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
+import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
@@ -21,6 +22,7 @@ import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.InvalidParentLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
+import com.application.ryft.issues.exception.NotAnEpicException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
@@ -971,5 +973,75 @@ class IssueServiceTest {
         verify(issueRepository).delete(epic);
         verify(commentRepository).deleteAllByIssueId(epic.getId());
         verify(commentRepository, never()).deleteAllByIssueId(linkedStory.getId());
+    }
+
+    @Test
+    void getEpicProgressWithNoLinkedIssuesReturnsZeroPercentWithoutDivideByZero() {
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(epic, "id", UUID.randomUUID());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(epic));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueRepository.countByProjectIdAndParentIssueId(projectId, epic.getId())).thenReturn(0L);
+        when(issueRepository.countByProjectIdAndParentIssueIdAndStatus(projectId, epic.getId(), IssueStatus.DONE))
+                .thenReturn(0L);
+
+        EpicProgressResponse result = issueService.getEpicProgress(callerId, "TRK-1");
+
+        assertThat(result).isEqualTo(new EpicProgressResponse(0, 0, 0.0));
+    }
+
+    @Test
+    void getEpicProgressWithSomeDoneAndSomeNotComputesPercent() {
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(epic, "id", UUID.randomUUID());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(epic));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueRepository.countByProjectIdAndParentIssueId(projectId, epic.getId())).thenReturn(4L);
+        when(issueRepository.countByProjectIdAndParentIssueIdAndStatus(projectId, epic.getId(), IssueStatus.DONE))
+                .thenReturn(1L);
+
+        EpicProgressResponse result = issueService.getEpicProgress(callerId, "TRK-1");
+
+        assertThat(result.totalCount()).isEqualTo(4);
+        assertThat(result.doneCount()).isEqualTo(1);
+        assertThat(result.percentDone()).isEqualTo(25.0);
+    }
+
+    @Test
+    void getEpicProgressWithAllLinkedIssuesDoneReturnsFullPercent() {
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(epic, "id", UUID.randomUUID());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(epic));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueRepository.countByProjectIdAndParentIssueId(projectId, epic.getId())).thenReturn(3L);
+        when(issueRepository.countByProjectIdAndParentIssueIdAndStatus(projectId, epic.getId(), IssueStatus.DONE))
+                .thenReturn(3L);
+
+        EpicProgressResponse result = issueService.getEpicProgress(callerId, "TRK-1");
+
+        assertThat(result.percentDone()).isEqualTo(100.0);
+    }
+
+    @Test
+    void getEpicProgressOnNonEpicThrows() {
+        Issue story = new Issue(projectId, "TRK-2", IssueType.STORY, "Story", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(story));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+
+        assertThatThrownBy(() -> issueService.getEpicProgress(callerId, "TRK-2"))
+                .isInstanceOf(NotAnEpicException.class);
+        verify(issueRepository, never()).countByProjectIdAndParentIssueId(any(), any());
+    }
+
+    @Test
+    void getEpicProgressRequiresEpicToExist() {
+        when(issueRepository.findByKey("TRK-9")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> issueService.getEpicProgress(callerId, "trk-9"))
+                .isInstanceOf(IssueNotFoundException.class);
     }
 }

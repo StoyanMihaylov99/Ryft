@@ -291,4 +291,10 @@ export class Board {
     }
     return this.epics().find((epic) => epic.id === issue.parentId)?.title ?? null;
   }
+
+  /* An EPIC-typed card here (or on the backlog/sprint board) intentionally has no progress bar of
+   * its own: the backend deliberately doesn't embed EpicProgress in IssueResponse to avoid an
+   * extra query per Epic on every list/board response, so showing it per-card here would mean one
+   * extra HTTP request per visible Epic card — potentially dozens on a card-dense board. Progress
+   * is shown in the issue detail panel instead, where the user has explicitly opened that one Epic. */
 }

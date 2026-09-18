@@ -16,6 +16,7 @@ import { AuthService } from '../../../core/auth/auth.service';
 import { Comment } from '../../../core/comment/models';
 import { CommentService } from '../../../core/comment/comment.service';
 import {
+  EpicProgress,
   Issue,
   IssuePriority,
   IssueStatus,
@@ -74,6 +75,10 @@ export class IssueDetailPanel {
   readonly subtaskError = signal<string | null>(null);
   readonly newSubtaskTitle = signal('');
   readonly creatingSubtask = signal(false);
+
+  readonly epicProgress = signal<EpicProgress | null>(null);
+  readonly loadingEpicProgress = signal(false);
+  readonly epicProgressError = signal<string | null>(null);
 
   /** Staged edits for title/status/priority/storyPoints/description/parentId — not sent until
    *  save() is called. */
@@ -148,6 +153,16 @@ export class IssueDetailPanel {
     return `${done}/${subtasks.length} done`;
   });
 
+  readonly epicProgressLabel = computed<string | null>(() => {
+    const progress = this.epicProgress();
+    return progress ? `${progress.doneCount}/${progress.totalCount} done` : null;
+  });
+
+  /** Rounded for display/aria — the raw `percentDone` can be a long-tailed float (e.g. 3/7 issues). */
+  readonly epicProgressPercent = computed<number>(() =>
+    Math.round(this.epicProgress()?.percentDone ?? 0),
+  );
+
   constructor() {
     effect(() => this.load(this.issueKey()));
     effect(() => {
@@ -167,6 +182,8 @@ export class IssueDetailPanel {
     this.subtasks.set([]);
     this.subtaskError.set(null);
     this.newSubtaskTitle.set('');
+    this.epicProgress.set(null);
+    this.epicProgressError.set(null);
     this.issueService.get(issueKey).subscribe({
       next: (issue) => {
         if (this.displayedIssueKey() !== issueKey) {
@@ -177,6 +194,9 @@ export class IssueDetailPanel {
         this.loading.set(false);
         if (this.canLoadSubtasksFor(issue.type)) {
           this.loadSubtasks(issueKey);
+        }
+        if (issue.type === 'EPIC') {
+          this.loadEpicProgress(issueKey);
         }
       },
       error: () => {
@@ -216,6 +236,26 @@ export class IssueDetailPanel {
         }
         this.loadingSubtasks.set(false);
         this.subtaskError.set('Failed to load subtasks.');
+      },
+    });
+  }
+
+  private loadEpicProgress(issueKey: string): void {
+    this.loadingEpicProgress.set(true);
+    this.issueService.getEpicProgress(issueKey).subscribe({
+      next: (progress) => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingEpicProgress.set(false);
+        this.epicProgress.set(progress);
+      },
+      error: () => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingEpicProgress.set(false);
+        this.epicProgressError.set('Failed to load progress.');
       },
     });
   }

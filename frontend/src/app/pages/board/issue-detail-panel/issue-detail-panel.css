@@ -173,16 +173,36 @@ textarea:disabled,
   margin-bottom: 1.25rem;
 }
 
-.subtasks {
+.subtasks,
+.epic-progress {
   margin-bottom: 1.5rem;
 }
 
 .subtasks h3,
-.comments h3 {
+.comments h3,
+.epic-progress h3 {
   margin: 0 0 0.875rem;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--text);
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--epic-bg);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--epic);
+}
+
+.epic-progress-label {
+  margin: 0.5rem 0 0;
 }
 
 .subtasks h3 {
@@ -361,7 +381,8 @@ textarea:disabled,
 }
 
 .comment-timestamp,
-.subtask-progress {
+.subtask-progress,
+.epic-progress-label {
   font-size: 0.75rem;
   color: var(--text-tertiary);
 }

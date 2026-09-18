@@ -1,6 +1,7 @@
 package com.application.ryft.issues.repository;
 
 import com.application.ryft.issues.entity.Issue;
+import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import java.util.List;
 import java.util.Optional;
@@ -35,4 +36,13 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
 
     /** Every child of a given parent regardless of project (a subtask always shares its parent's project). */
     List<Issue> findAllByParentIssueIdOrderByCreatedAtAsc(UUID parentIssueId);
+
+    /**
+     * Backs an Epic's progress bar (see {@code IssueServiceImpl#getEpicProgress}): counts only the
+     * Epic's directly-linked STORY/TASK/BUG issues, not their own Subtasks — a count query rather than
+     * loading full {@link Issue} rows just to size a list.
+     */
+    long countByProjectIdAndParentIssueId(UUID projectId, UUID parentIssueId);
+
+    long countByProjectIdAndParentIssueIdAndStatus(UUID projectId, UUID parentIssueId, IssueStatus status);
 }

@@ -3,6 +3,7 @@ package com.application.ryft.issues.service;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
+import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import java.util.List;
@@ -69,4 +70,13 @@ public interface IssueService {
 
     /** Subtasks of the given issue, ordered by creation time — any project member. */
     List<IssueResponse> listSubtasks(UUID callerId, String issueKey);
+
+    /**
+     * Done/total count of the given Epic's directly-linked STORY/TASK/BUG issues — any project member.
+     * Deliberately 2-level only: a linked issue's own Subtasks are not rolled up (see
+     * {@link com.application.ryft.issues.dto.EpicProgressResponse}). Throws
+     * {@link com.application.ryft.issues.exception.NotAnEpicException} if {@code epicKey} doesn't
+     * resolve to an EPIC.
+     */
+    EpicProgressResponse getEpicProgress(UUID callerId, String epicKey);
 }

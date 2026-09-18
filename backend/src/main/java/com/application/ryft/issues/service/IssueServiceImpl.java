@@ -3,6 +3,7 @@ package com.application.ryft.issues.service;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
+import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
@@ -14,6 +15,7 @@ import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.InvalidParentLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
+import com.application.ryft.issues.exception.NotAnEpicException;
 import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
@@ -314,6 +316,21 @@ public class IssueServiceImpl implements IssueService {
         return issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(issue.getId()).stream()
                 .map(IssueResponse::from)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public EpicProgressResponse getEpicProgress(UUID callerId, String epicKey) {
+        Issue epic = requireIssue(epicKey);
+        projectAccess.requireMembership(callerId, projectKeyOf(epic));
+        if (epic.getType() != IssueType.EPIC) {
+            throw new NotAnEpicException(epic.getKey());
+        }
+
+        long total = issueRepository.countByProjectIdAndParentIssueId(epic.getProjectId(), epic.getId());
+        long done = issueRepository.countByProjectIdAndParentIssueIdAndStatus(epic.getProjectId(), epic.getId(),
+                IssueStatus.DONE);
+        return EpicProgressResponse.of(total, done);
     }
 
     @Override
