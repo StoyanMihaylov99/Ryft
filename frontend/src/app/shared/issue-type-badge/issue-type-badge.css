@@ -1,0 +1,38 @@
+:host {
+  display: contents;
+}
+
+.issue-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated-2);
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
+}
+
+.issue-type-badge svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.type-story {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.type-bug {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.type-epic {
+  color: var(--epic);
+  background: var(--epic-bg);
+}

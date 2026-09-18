@@ -18,7 +18,10 @@
       <div class="panel-header">
         <h2 id="issue-panel-title" class="visually-hidden">{{ issue.key }}: {{ issue.title }}</h2>
         <span class="issue-key">{{ issue.key }}</span>
-        <span class="issue-type">{{ issue.type }}</span>
+        <app-issue-type-badge [type]="issue.type" />
+        @if (linkedEpic(); as epic) {
+          <span class="epic-chip" [title]="'Epic: ' + epic.title">Epic: {{ epic.title }}</span>
+        }
       </div>
 
       @if (errorMessage()) {
@@ -50,7 +53,11 @@
         </label>
         <label>
           Priority
-          <select [value]="draftPriority()" [disabled]="!canManage()" (change)="updateDraftPriority($any($event.target).value)">
+          <select
+            [value]="draftPriority()"
+            [disabled]="!canManage()"
+            (change)="updateDraftPriority($any($event.target).value)"
+          >
             <option value="LOWEST">Lowest</option>
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
@@ -65,10 +72,43 @@
             min="0"
             [value]="draftStoryPoints()"
             [disabled]="!canManage()"
-            (input)="updateDraftStoryPoints($any($event.target).value === '' ? null : $any($event.target).valueAsNumber)"
+            (input)="
+              updateDraftStoryPoints(
+                $any($event.target).value === '' ? null : $any($event.target).valueAsNumber
+              )
+            "
           />
         </label>
       </div>
+
+      @if (issue.type !== 'EPIC') {
+        <label class="epic-label">
+          Epic
+          <select
+            [value]="draftParentId() ?? ''"
+            [disabled]="!canManage()"
+            [attr.aria-describedby]="
+              canManage() && attemptingToUnlinkEpic() ? 'epic-unlink-warning' : null
+            "
+            (change)="
+              updateDraftParentId(
+                $any($event.target).value === '' ? null : $any($event.target).value
+              )
+            "
+          >
+            <option value="">No epic</option>
+            @for (epic of epics(); track epic.id) {
+              <option [value]="epic.id">{{ epic.key }} · {{ epic.title }}</option>
+            }
+          </select>
+        </label>
+        @if (canManage() && attemptingToUnlinkEpic()) {
+          <p id="epic-unlink-warning" class="field-error" role="alert">
+            Epics can't be unlinked yet — pick a different epic instead. This change won't be
+            saved.
+          </p>
+        }
+      }
 
       <label class="description-label">
         Description
@@ -103,9 +143,11 @@
               </div>
             } @else {
               <p class="comment-meta">
-                <span class="comment-author">{{ comment.authorDisplayName ?? 'Unknown user' }}</span>
+                <span class="comment-author">{{
+                  comment.authorDisplayName ?? 'Unknown user'
+                }}</span>
                 <span class="comment-timestamp">
-                  {{ comment.createdAt | date: "MMM d, y, h:mm a" }}
+                  {{ comment.createdAt | date: 'MMM d, y, h:mm a' }}
                   @if (comment.updatedAt) {
                     (edited)
                   }
@@ -114,7 +156,11 @@
               <p class="comment-body">{{ comment.body }}</p>
               @if (comment.authorId === currentUserId()) {
                 @if (confirmingDeleteCommentId() === comment.id) {
-                  <div class="comment-actions" role="alertdialog" aria-label="Confirm delete comment">
+                  <div
+                    class="comment-actions"
+                    role="alertdialog"
+                    aria-label="Confirm delete comment"
+                  >
                     <span class="confirm-text">Delete this comment?</span>
                     <button type="button" (click)="deleteComment(comment.id)">Delete</button>
                     <button type="button" autofocus (click)="cancelDeleteComment()">Cancel</button>
@@ -140,11 +186,18 @@
             (input)="newCommentBody.set($any($event.target).value)"
           ></textarea>
           <div class="new-comment-row">
-            <button type="button" class="comment-btn" [disabled]="postingComment()" (click)="submitComment()">
+            <button
+              type="button"
+              class="comment-btn"
+              [disabled]="postingComment()"
+              (click)="submitComment()"
+            >
               {{ postingComment() ? 'Posting…' : 'Comment' }}
             </button>
             @if (canManage() && !confirmingDeleteIssue()) {
-              <button type="button" class="delete-btn" (click)="requestDeleteIssue()">Delete issue</button>
+              <button type="button" class="delete-btn" (click)="requestDeleteIssue()">
+                Delete issue
+              </button>
             }
           </div>
 
@@ -152,8 +205,12 @@
             <div class="confirm-box" role="alertdialog" aria-label="Confirm delete issue">
               <p>Delete {{ issue.key }}? This cannot be undone.</p>
               <div class="confirm-actions">
-                <button type="button" class="delete-btn" (click)="deleteIssue()">Delete issue</button>
-                <button type="button" class="cancel-btn" autofocus (click)="cancelDeleteIssue()">Cancel</button>
+                <button type="button" class="delete-btn" (click)="deleteIssue()">
+                  Delete issue
+                </button>
+                <button type="button" class="cancel-btn" autofocus (click)="cancelDeleteIssue()">
+                  Cancel
+                </button>
               </div>
             </div>
           }

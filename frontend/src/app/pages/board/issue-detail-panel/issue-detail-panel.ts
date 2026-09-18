@@ -1,5 +1,14 @@
 import { DatePipe } from '@angular/common';
-import { Component, HostListener, computed, effect, inject, input, output, signal } from '@angular/core';
+import {
+  Component,
+  HostListener,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { A11yModule } from '@angular/cdk/a11y';
 import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
@@ -8,9 +17,10 @@ import { Comment } from '../../../core/comment/models';
 import { CommentService } from '../../../core/comment/comment.service';
 import { Issue, IssuePriority, IssueStatus, UpdateIssueRequest } from '../../../core/issue/models';
 import { IssueService } from '../../../core/issue/issue.service';
+import { IssueTypeBadge } from '../../../shared/issue-type-badge/issue-type-badge';
 
 @Component({
-  imports: [DatePipe, A11yModule],
+  imports: [DatePipe, A11yModule, IssueTypeBadge],
   selector: 'app-issue-detail-panel',
   templateUrl: './issue-detail-panel.html',
   styleUrl: './issue-detail-panel.css',
@@ -21,6 +31,9 @@ export class IssueDetailPanel {
   private readonly authService = inject(AuthService);
 
   readonly issueKey = input.required<string>();
+  /** Needed to load this project's Epics for the Epic field's options — optional so a panel opened
+   *  without it (e.g. in isolation) just skips that field and its "Epic: <title>" chip. */
+  readonly projectKey = input<string | null>(null);
   /** Owner/Admin only — title, description, priority and delete are gated on this; status and
    *  comments are not (see IssueServiceImpl.changeStatus's javadoc for why status stays open). */
   readonly canManage = input(false);
@@ -39,12 +52,18 @@ export class IssueDetailPanel {
   readonly confirmingDeleteIssue = signal(false);
   readonly confirmingDeleteCommentId = signal<string | null>(null);
 
-  /** Staged edits for title/status/priority/storyPoints/description — not sent until save() is called. */
+  /** This project's Epics, for the Epic field's options and for resolving the linked-epic chip —
+   *  loaded once per projectKey, independent of which issue is currently open. */
+  readonly epics = signal<Issue[]>([]);
+
+  /** Staged edits for title/status/priority/storyPoints/description/parentId — not sent until
+   *  save() is called. */
   readonly draftTitle = signal('');
   readonly draftDescription = signal('');
   readonly draftPriority = signal<IssuePriority>('MEDIUM');
   readonly draftStoryPoints = signal<number | null>(null);
   readonly draftStatus = signal<IssueStatus>('TODO');
+  readonly draftParentId = signal<string | null>(null);
   readonly saving = signal(false);
 
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
@@ -59,8 +78,32 @@ export class IssueDetailPanel {
 
   readonly titleIsBlank = computed(() => this.draftTitle().trim().length === 0);
 
+  /** True once the user picks "No epic" on an issue that currently has one linked. There is no
+   *  backend support for clearing a parent link (see UpdateIssueRequest's javadoc), so this
+   *  selection is never sent — the Epic field shows an inline warning instead of silently no-oping. */
+  readonly attemptingToUnlinkEpic = computed(() => {
+    const issue = this.issue();
+    return !!issue?.parentId && this.draftParentId() === null;
+  });
+
+  /** The issue's linked Epic, resolved from the loaded `epics` list — null if unlinked, or if the
+   *  epic couldn't be resolved (e.g. no projectKey was provided). */
+  readonly linkedEpic = computed<Issue | null>(() => {
+    const parentId = this.issue()?.parentId;
+    if (!parentId) {
+      return null;
+    }
+    return this.epics().find((epic) => epic.id === parentId) ?? null;
+  });
+
   constructor() {
     effect(() => this.load(this.issueKey()));
+    effect(() => {
+      const projectKey = this.projectKey();
+      if (projectKey) {
+        this.loadEpics(projectKey);
+      }
+    });
   }
 
   private load(issueKey: string): void {
@@ -84,12 +127,21 @@ export class IssueDetailPanel {
     });
   }
 
+  private loadEpics(projectKey: string): void {
+    this.issueService.listEpics(projectKey).subscribe({
+      next: (epics) => this.epics.set(epics),
+      // Non-critical: the Epic field just has no options and the linked-epic chip stays hidden.
+      error: () => {},
+    });
+  }
+
   private resetDraft(issue: Issue): void {
     this.draftTitle.set(issue.title);
     this.draftDescription.set(issue.description ?? '');
     this.draftPriority.set(issue.priority);
     this.draftStoryPoints.set(issue.storyPoints);
     this.draftStatus.set(issue.status);
+    this.draftParentId.set(issue.parentId);
   }
 
   updateDraftTitle(value: string): void {
@@ -124,6 +176,13 @@ export class IssueDetailPanel {
     this.draftStatus.set(status);
   }
 
+  updateDraftParentId(parentId: string | null): void {
+    if (!this.canManage()) {
+      return;
+    }
+    this.draftParentId.set(parentId);
+  }
+
   save(): void {
     const issue = this.issue();
     if (!issue || this.saving()) {
@@ -140,7 +199,9 @@ export class IssueDetailPanel {
     this.saving.set(true);
     this.errorMessage.set(null);
 
-    const patched$: Observable<Issue> = patchRequest ? this.issueService.update(issue.key, patchRequest) : of(issue);
+    const patched$: Observable<Issue> = patchRequest
+      ? this.issueService.update(issue.key, patchRequest)
+      : of(issue);
     const saved$: Observable<Issue> = patched$.pipe(
       switchMap((patched) => {
         if (!statusChanged) {
@@ -156,7 +217,9 @@ export class IssueDetailPanel {
               this.resetDraft(patched);
               this.draftStatus.set(status);
               this.errorMessage.set(
-                patchRequest ? 'Status change failed; other changes were saved.' : 'Failed to change status.',
+                patchRequest
+                  ? 'Status change failed; other changes were saved.'
+                  : 'Failed to change status.',
               );
             }
             return EMPTY;
@@ -203,6 +266,12 @@ export class IssueDetailPanel {
     }
     if (this.draftStoryPoints() !== issue.storyPoints) {
       request.storyPoints = this.draftStoryPoints();
+    }
+    // A null parentId means "don't touch it" server-side, not "clear it" (see
+    // UpdateIssueRequest's javadoc), so an unlink attempt is never sent — attemptingToUnlinkEpic
+    // surfaces that constraint to the user instead.
+    if (this.draftParentId() !== issue.parentId && !this.attemptingToUnlinkEpic()) {
+      request.parentId = this.draftParentId();
     }
     return Object.keys(request).length > 0 ? request : null;
   }
@@ -274,7 +343,9 @@ export class IssueDetailPanel {
     }
     this.commentService.update(commentId, body).subscribe({
       next: (updated) => {
-        this.comments.update((list) => list.map((comment) => (comment.id === commentId ? updated : comment)));
+        this.comments.update((list) =>
+          list.map((comment) => (comment.id === commentId ? updated : comment)),
+        );
         this.editingCommentId.set(null);
       },
       error: () => this.errorMessage.set('Failed to save the comment.'),
@@ -291,7 +362,8 @@ export class IssueDetailPanel {
 
   deleteComment(commentId: string): void {
     this.commentService.delete(commentId).subscribe({
-      next: () => this.comments.update((list) => list.filter((comment) => comment.id !== commentId)),
+      next: () =>
+        this.comments.update((list) => list.filter((comment) => comment.id !== commentId)),
       error: () => {
         this.confirmingDeleteCommentId.set(null);
         this.errorMessage.set('Failed to delete the comment.');

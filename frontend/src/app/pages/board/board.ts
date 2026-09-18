@@ -1,4 +1,9 @@
-import { CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
+import {
+  CdkDragDrop,
+  DragDropModule,
+  moveItemInArray,
+  transferArrayItem,
+} from '@angular/cdk/drag-drop';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
@@ -48,12 +53,23 @@ export class Board {
   readonly inviting = signal(false);
   readonly memberError = signal<string | null>(null);
 
-  readonly listIds = computed(() => (this.board()?.columns ?? []).map((column) => this.columnListId(column)));
+  readonly listIds = computed(() =>
+    (this.board()?.columns ?? []).map((column) => this.columnListId(column)),
+  );
 
   readonly createForm = this.formBuilder.nonNullable.group({
     type: ['TASK' as IssueType, [Validators.required]],
     title: ['', [Validators.required, Validators.maxLength(200)]],
+    parentId: null as string | null,
   });
+
+  /** All EPIC-typed issues currently on the board — the create form's Epic options and each card's
+   *  "Epic: <title>" chip are both resolved from this, so linking an epic never needs a new request. */
+  readonly epics = computed<Issue[]>(() =>
+    (this.board()?.columns ?? [])
+      .flatMap((column) => column.issues)
+      .filter((issue) => issue.type === 'EPIC'),
+  );
 
   readonly inviteForm = this.formBuilder.nonNullable.group({
     email: ['', [Validators.required, Validators.email]],
@@ -112,7 +128,9 @@ export class Board {
   changeMemberRole(userId: string, role: ProjectRole): void {
     this.memberError.set(null);
     const previous = this.members();
-    this.members.update((members) => members.map((m) => (m.userId === userId ? { ...m, role } : m)));
+    this.members.update((members) =>
+      members.map((m) => (m.userId === userId ? { ...m, role } : m)),
+    );
     this.projectService.changeMemberRole(this.projectKey, userId, role).subscribe({
       error: () => {
         this.members.set(previous);
@@ -161,11 +179,21 @@ export class Board {
     }
 
     const issue = event.previousContainer.data[event.previousIndex];
-    transferArrayItem(event.previousContainer.data, event.container.data, event.previousIndex, event.currentIndex);
+    transferArrayItem(
+      event.previousContainer.data,
+      event.container.data,
+      event.previousIndex,
+      event.currentIndex,
+    );
 
     this.issueService.changeStatus(issue.key, targetColumn.category).subscribe({
       error: () => {
-        transferArrayItem(event.container.data, event.previousContainer.data, event.currentIndex, event.previousIndex);
+        transferArrayItem(
+          event.container.data,
+          event.previousContainer.data,
+          event.currentIndex,
+          event.previousIndex,
+        );
         this.errorMessage.set(`Failed to move ${issue.key}. Please try again.`);
       },
     });
@@ -193,7 +221,9 @@ export class Board {
         column.issues[index] = updated;
       } else {
         column.issues.splice(index, 1);
-        board.columns.find((candidate) => candidate.category === updated.status)?.issues.push(updated);
+        board.columns
+          .find((candidate) => candidate.category === updated.status)
+          ?.issues.push(updated);
       }
       break;
     }
@@ -216,28 +246,49 @@ export class Board {
     this.showCreateForm.update((shown) => !shown);
   }
 
+  /** An EPIC can't itself be linked to a parent — clear any staged selection so switching back to
+   *  another type doesn't resurrect a stale, no-longer-visible choice. */
+  onCreateTypeChange(): void {
+    if (this.createForm.controls.type.value === 'EPIC') {
+      this.createForm.controls.parentId.setValue(null);
+    }
+  }
+
   submitCreate(): void {
     if (this.createForm.invalid) {
       this.createForm.markAllAsTouched();
       return;
     }
     this.creating.set(true);
-    const { type, title } = this.createForm.getRawValue();
-    this.issueService.create(this.projectKey, { type, title }).subscribe({
-      next: (issue) => {
-        this.creating.set(false);
-        this.showCreateForm.set(false);
-        this.createForm.reset({ type: 'TASK', title: '' });
-        const board = this.board();
-        if (board) {
-          board.columns.find((column) => column.category === 'TODO')?.issues.push(issue);
-          this.board.set({ ...board });
-        }
-      },
-      error: () => {
-        this.creating.set(false);
-        this.errorMessage.set('Failed to create the issue.');
-      },
-    });
+    const { type, title, parentId } = this.createForm.getRawValue();
+    this.issueService
+      .create(this.projectKey, {
+        type,
+        title,
+        ...(type !== 'EPIC' && parentId ? { parentId } : {}),
+      })
+      .subscribe({
+        next: (issue) => {
+          this.creating.set(false);
+          this.showCreateForm.set(false);
+          this.createForm.reset({ type: 'TASK', title: '', parentId: null });
+          const board = this.board();
+          if (board) {
+            board.columns.find((column) => column.category === 'TODO')?.issues.push(issue);
+            this.board.set({ ...board });
+          }
+        },
+        error: () => {
+          this.creating.set(false);
+          this.errorMessage.set('Failed to create the issue.');
+        },
+      });
+  }
+
+  epicTitleFor(issue: Issue): string | null {
+    if (!issue.parentId) {
+      return null;
+    }
+    return this.epics().find((epic) => epic.id === issue.parentId)?.title ?? null;
   }
 }

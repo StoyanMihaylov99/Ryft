@@ -49,6 +49,7 @@
 .panel-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.625rem;
   margin: 0 2rem 1.25rem 0;
 }
@@ -59,14 +60,17 @@
   font-size: 0.8125rem;
 }
 
-.issue-type {
+.epic-chip {
   font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-tertiary);
-  background: var(--bg-elevated-2);
+  font-weight: 600;
+  color: var(--epic);
+  background: var(--epic-bg);
   padding: 0.1875rem 0.5rem;
   border-radius: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .title-input {
@@ -148,6 +152,7 @@ textarea:disabled,
   cursor: default;
 }
 
+.epic-label,
 .description-label {
   margin-bottom: 1.25rem;
 }

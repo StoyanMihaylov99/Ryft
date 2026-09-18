@@ -38,11 +38,16 @@ public class ProjectIssuesController {
 
     @GetMapping
     public ResponseEntity<List<IssueResponse>> list(@AuthenticationPrincipal Jwt jwt, @PathVariable String projectKey,
-            @RequestParam(required = false) UUID sprintId) {
+            @RequestParam(required = false) UUID sprintId, @RequestParam(required = false) UUID epicId) {
         UUID caller = callerId(jwt);
-        List<IssueResponse> issues = sprintId == null
-                ? issueService.listForProject(caller, projectKey)
-                : issueService.listForProject(caller, projectKey, sprintId);
+        List<IssueResponse> issues;
+        if (sprintId != null) {
+            issues = issueService.listForProject(caller, projectKey, sprintId);
+        } else if (epicId != null) {
+            issues = issueService.listForProjectByEpic(caller, projectKey, epicId);
+        } else {
+            issues = issueService.listForProject(caller, projectKey);
+        }
         return ResponseEntity.ok(issues);
     }
 

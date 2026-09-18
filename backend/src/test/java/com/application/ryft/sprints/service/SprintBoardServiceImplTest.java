@@ -68,7 +68,7 @@ class SprintBoardServiceImplTest {
 
     private IssueResponse issue(String key, IssueStatus status) {
         return new IssueResponse(UUID.randomUUID(), projectId, key, IssueType.TASK, "Title", null, status,
-                IssuePriority.MEDIUM, null, callerId, UUID.randomUUID(), null, Instant.now(), Instant.now(), null);
+                IssuePriority.MEDIUM, null, callerId, UUID.randomUUID(), null, null, Instant.now(), Instant.now(), null);
     }
 
     @Test

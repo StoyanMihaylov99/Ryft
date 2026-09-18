@@ -12,7 +12,14 @@ import { Sprint } from '../../core/sprint/models';
 import { Backlog } from './backlog';
 
 function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
-  return { userId, email: 'x@example.com', displayName: 'X', avatarUrl: null, role, addedAt: '2024-01-01T00:00:00Z' };
+  return {
+    userId,
+    email: 'x@example.com',
+    displayName: 'X',
+    avatarUrl: null,
+    role,
+    addedAt: '2024-01-01T00:00:00Z',
+  };
 }
 
 function sprint(overrides: Partial<Sprint> = {}): Sprint {
@@ -48,6 +55,7 @@ function issue(key: string, overrides: Partial<Issue> = {}): Issue {
     updatedAt: null,
     resolvedAt: null,
     sprintId: null,
+    parentId: null,
     ...overrides,
   };
 }
@@ -131,7 +139,10 @@ describe('Backlog', () => {
 
   it('loads and renders sprint sections and the backlog tail', () => {
     flushInitial(
-      [sprint({ id: 's1', name: 'Sprint 1', state: 'ACTIVE' }), sprint({ id: 's2', name: 'Sprint 2', state: 'COMPLETED' })],
+      [
+        sprint({ id: 's1', name: 'Sprint 1', state: 'ACTIVE' }),
+        sprint({ id: 's2', name: 'Sprint 2', state: 'COMPLETED' }),
+      ],
       { s1: [issue('TRK-1', { sprintId: 's1' })] },
       [issue('TRK-2')],
     );
@@ -151,7 +162,9 @@ describe('Backlog', () => {
     fixture.detectChanges();
 
     expect(component.sections()).toHaveLength(0);
-    expect(fixture.debugElement.query(By.css('.empty-state')).nativeElement.textContent).toContain('No active or planned sprints');
+    expect(fixture.debugElement.query(By.css('.empty-state')).nativeElement.textContent).toContain(
+      'No active or planned sprints',
+    );
     expect(fixture.debugElement.queryAll(By.css('.backlog-section'))).toHaveLength(1);
   });
 
@@ -257,7 +270,9 @@ describe('Backlog', () => {
 
     component.drop(dropEvent(section.issues, backlog, 0, 1, false), null);
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/sprint`).flush(issue('TRK-1', { sprintId: null }));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/sprint`)
+      .flush(issue('TRK-1', { sprintId: null }));
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/backlog-rank`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
@@ -304,13 +319,27 @@ describe('Backlog', () => {
   it('same-section reorder within a sprint does not call the API', () => {
     const a = issue('TRK-1', { sprintId: 's1' });
     const b = issue('TRK-2', { sprintId: 's1' });
-    flushInitial([sprint({ id: 's1', state: 'ACTIVE' })], { s1: [a, b] }, [], [projectMember('u1', 'OWNER')]);
+    flushInitial(
+      [sprint({ id: 's1', state: 'ACTIVE' })],
+      { s1: [a, b] },
+      [],
+      [projectMember('u1', 'OWNER')],
+    );
 
     const section = component.sections()[0];
     component.drop(dropEvent(section.issues, section.issues, 0, 1, true), section.sprint.id);
 
     httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1/backlog-rank`);
     expect(section.issues.map((i) => i.key)).toEqual(['TRK-2', 'TRK-1']);
+  });
+
+  it("resolves a card issue's linked-epic title from the sections and backlog already loaded", () => {
+    const epic = issue('TRK-1', { type: 'EPIC', title: 'Big epic' });
+    const story = issue('TRK-2', { type: 'STORY', parentId: 'TRK-1', sprintId: 's1' });
+    flushInitial([sprint({ id: 's1', state: 'ACTIVE' })], { s1: [story] }, [epic]);
+
+    expect(component.epicTitleFor(story)).toBe('Big epic');
+    expect(component.epicTitleFor(epic)).toBeNull();
   });
 
   it('hides drag affordances for a non-Owner/Admin caller', () => {

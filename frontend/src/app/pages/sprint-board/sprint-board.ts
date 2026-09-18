@@ -1,4 +1,9 @@
-import { CdkDragDrop, DragDropModule, moveItemInArray, transferArrayItem } from '@angular/cdk/drag-drop';
+import {
+  CdkDragDrop,
+  DragDropModule,
+  moveItemInArray,
+  transferArrayItem,
+} from '@angular/cdk/drag-drop';
 import { Component, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Sidebar } from '../../shared/sidebar/sidebar';
@@ -47,7 +52,17 @@ export class SprintBoard {
   readonly canManageIssues = computed(() => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN');
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
-  readonly listIds = computed(() => (this.board()?.columns ?? []).map((column) => this.columnListId(column)));
+  readonly listIds = computed(() =>
+    (this.board()?.columns ?? []).map((column) => this.columnListId(column)),
+  );
+
+  /** Every EPIC currently on the sprint board — used to resolve each card's "Epic: <title>" chip
+   *  without an extra request. */
+  readonly epics = computed<Issue[]>(() =>
+    (this.board()?.columns ?? [])
+      .flatMap((column) => column.issues)
+      .filter((issue) => issue.type === 'EPIC'),
+  );
 
   constructor() {
     this.loadBoard();
@@ -126,11 +141,21 @@ export class SprintBoard {
     }
 
     const issue = event.previousContainer.data[event.previousIndex];
-    transferArrayItem(event.previousContainer.data, event.container.data, event.previousIndex, event.currentIndex);
+    transferArrayItem(
+      event.previousContainer.data,
+      event.container.data,
+      event.previousIndex,
+      event.currentIndex,
+    );
 
     this.issueService.changeStatus(issue.key, targetColumn.category).subscribe({
       error: () => {
-        transferArrayItem(event.container.data, event.previousContainer.data, event.currentIndex, event.previousIndex);
+        transferArrayItem(
+          event.container.data,
+          event.previousContainer.data,
+          event.currentIndex,
+          event.previousIndex,
+        );
         this.errorMessage.set(`Failed to move ${issue.key}. Please try again.`);
       },
     });
@@ -158,7 +183,9 @@ export class SprintBoard {
         column.issues[index] = updated;
       } else {
         column.issues.splice(index, 1);
-        board.columns.find((candidate) => candidate.category === updated.status)?.issues.push(updated);
+        board.columns
+          .find((candidate) => candidate.category === updated.status)
+          ?.issues.push(updated);
       }
       break;
     }
@@ -175,5 +202,12 @@ export class SprintBoard {
     }
     this.board.set({ ...board });
     this.closePanel();
+  }
+
+  epicTitleFor(issue: Issue): string | null {
+    if (!issue.parentId) {
+      return null;
+    }
+    return this.epics().find((epic) => epic.id === issue.parentId)?.title ?? null;
   }
 }

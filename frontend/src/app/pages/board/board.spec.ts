@@ -2,6 +2,7 @@ import { CdkDragDrop } from '@angular/cdk/drag-drop';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
@@ -11,10 +12,17 @@ import { ProjectMember } from '../../core/project/models';
 import { Board } from './board';
 
 function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
-  return { userId, email: 'x@example.com', displayName: 'X', avatarUrl: null, role, addedAt: '2024-01-01T00:00:00Z' };
+  return {
+    userId,
+    email: 'x@example.com',
+    displayName: 'X',
+    avatarUrl: null,
+    role,
+    addedAt: '2024-01-01T00:00:00Z',
+  };
 }
 
-function issue(key: string, status: Issue['status']): Issue {
+function issue(key: string, status: Issue['status'], overrides: Partial<Issue> = {}): Issue {
   return {
     id: key,
     projectId: 'p1',
@@ -31,6 +39,8 @@ function issue(key: string, status: Issue['status']): Issue {
     updatedAt: null,
     resolvedAt: null,
     sprintId: null,
+    parentId: null,
+    ...overrides,
   };
 }
 
@@ -89,7 +99,9 @@ describe('Board', () => {
         },
         {
           provide: AuthService,
-          useValue: { currentUser: () => (currentUserId ? { id: currentUserId } : null) },
+          useValue: {
+            currentUser: () => (currentUserId ? { id: currentUserId, displayName: 'X' } : null),
+          },
         },
       ],
     }).compileComponents();
@@ -255,9 +267,14 @@ describe('Board', () => {
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`).flush(issue('TRK-1', 'IN_PROGRESS'));
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
+      .flush(issue('TRK-1', 'IN_PROGRESS'));
     expect(todoColumn.issues).toHaveLength(0);
     expect(inProgressColumn.issues.map((i) => i.key)).toEqual(['TRK-1']);
   });
@@ -268,7 +285,10 @@ describe('Board', () => {
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
@@ -282,13 +302,87 @@ describe('Board', () => {
   it('creating an issue adds it to the To Do column', () => {
     flushInitialBoard(boardWith());
 
-    component.createForm.setValue({ type: 'BUG', title: 'New bug' });
+    component.createForm.setValue({ type: 'BUG', title: 'New bug', parentId: null });
     component.submitCreate();
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`).flush(issue('TRK-1', 'TODO'));
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`);
+    expect(req.request.body).toEqual({ type: 'BUG', title: 'New bug' });
+    req.flush(issue('TRK-1', 'TODO'));
 
     expect(component.board()!.columns[0].issues.map((i) => i.key)).toEqual(['TRK-1']);
     expect(component.showCreateForm()).toBe(false);
+  });
+
+  it('shows Epic as a selectable type, alongside Story/Task/Bug', () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    component.showCreateForm.set(true);
+    fixture.detectChanges();
+
+    const typeSelect = fixture.debugElement.queryAll(By.css('.create-card select'))[0];
+    const options = typeSelect.queryAll(By.css('option'));
+    expect(options.map((option) => option.nativeElement.value)).toEqual([
+      'TASK',
+      'STORY',
+      'BUG',
+      'EPIC',
+    ]);
+  });
+
+  it('shows the Epic select for a Story/Task/Bug and hides it once the type is switched to Epic', () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    component.showCreateForm.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-field'))).not.toBeNull();
+
+    component.createForm.controls.type.setValue('EPIC');
+    component.onCreateTypeChange();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-field'))).toBeNull();
+  });
+
+  it('lists only the Epic-typed issues on the board as Epic options', () => {
+    const epic = issue('TRK-1', 'TODO', { type: 'EPIC', title: 'Big epic' });
+    flushInitialBoard(boardWith(epic, issue('TRK-2', 'TODO')));
+    component.showCreateForm.set(true);
+    fixture.detectChanges();
+
+    expect(component.epics().map((e) => e.key)).toEqual(['TRK-1']);
+  });
+
+  it('sends parentId when creating a Story linked to an Epic', () => {
+    flushInitialBoard(boardWith());
+
+    component.createForm.setValue({ type: 'STORY', title: 'New story', parentId: 'epic-1' });
+    component.submitCreate();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`);
+    expect(req.request.body).toEqual({ type: 'STORY', title: 'New story', parentId: 'epic-1' });
+    req.flush(issue('TRK-1', 'TODO', { type: 'STORY', parentId: 'epic-1' }));
+  });
+
+  it('never sends parentId when creating an Epic, even if one was staged before switching types', () => {
+    flushInitialBoard(boardWith());
+
+    component.createForm.setValue({ type: 'STORY', title: 'New epic', parentId: 'epic-1' });
+    component.createForm.controls.type.setValue('EPIC');
+    component.submitCreate();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/issues`);
+    expect(req.request.body).toEqual({ type: 'EPIC', title: 'New epic' });
+    req.flush(issue('TRK-1', 'TODO', { type: 'EPIC' }));
+  });
+
+  it("resolves a card issue's linked-epic title from the issues already loaded on the board", () => {
+    const epic = issue('TRK-1', 'TODO', { type: 'EPIC', title: 'Big epic' });
+    const story = issue('TRK-2', 'TODO', { type: 'STORY', parentId: 'TRK-1' });
+    flushInitialBoard(boardWith(epic, story));
+
+    expect(component.epicTitleFor(story)).toBe('Big epic');
+    expect(component.epicTitleFor(epic)).toBeNull();
   });
 
   it('moves an updated issue into its new column when the status changed via the detail panel', () => {

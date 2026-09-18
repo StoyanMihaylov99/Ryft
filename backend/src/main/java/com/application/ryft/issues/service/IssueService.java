@@ -17,6 +17,14 @@ public interface IssueService {
      * want only one sprint's issues (e.g. a later scrum board/burndown step). */
     List<IssueResponse> listForProject(UUID callerId, String projectKey, UUID sprintId);
 
+    /**
+     * Epic-scoped variant of {@link #listForProject(UUID, String)} — filters to issues whose
+     * {@code parentIssueId} equals the given Epic's id. A distinct method name rather than another
+     * {@code (UUID, String, UUID)} overload, since Java can't overload on parameter name alone; wired
+     * the same way as the {@code sprintId} filter otherwise (controller -&gt; service -&gt; repository).
+     */
+    List<IssueResponse> listForProjectByEpic(UUID callerId, String projectKey, UUID epicId);
+
     /** Issues with no sprint assigned, ordered by their manual backlog rank. */
     List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey);
 
