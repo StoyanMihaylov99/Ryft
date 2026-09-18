@@ -1,9 +1,14 @@
 package com.application.ryft.issues.entity;
 
-/** EPIC arrives with Phase 3's hierarchy work; SUBTASK is still to come, later in the same phase. */
+/**
+ * EPIC and SUBTASK both arrived with Phase 3's hierarchy work. SUBTASK issues are checklist-style
+ * children of a STORY/TASK/BUG (own status, own key) — see {@code Issue.parentIssueId} and
+ * {@code IssueServiceImpl}'s parent-link validation for the rules governing both link types.
+ */
 public enum IssueType {
     STORY,
     TASK,
     BUG,
-    EPIC
+    EPIC,
+    SUBTASK
 }

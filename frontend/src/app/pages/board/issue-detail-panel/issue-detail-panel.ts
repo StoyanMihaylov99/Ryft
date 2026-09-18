@@ -15,7 +15,13 @@ import { catchError, switchMap } from 'rxjs/operators';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Comment } from '../../../core/comment/models';
 import { CommentService } from '../../../core/comment/comment.service';
-import { Issue, IssuePriority, IssueStatus, UpdateIssueRequest } from '../../../core/issue/models';
+import {
+  Issue,
+  IssuePriority,
+  IssueStatus,
+  IssueType,
+  UpdateIssueRequest,
+} from '../../../core/issue/models';
 import { IssueService } from '../../../core/issue/issue.service';
 import { IssueTypeBadge } from '../../../shared/issue-type-badge/issue-type-badge';
 
@@ -31,8 +37,9 @@ export class IssueDetailPanel {
   private readonly authService = inject(AuthService);
 
   readonly issueKey = input.required<string>();
-  /** Needed to load this project's Epics for the Epic field's options — optional so a panel opened
-   *  without it (e.g. in isolation) just skips that field and its "Epic: <title>" chip. */
+  /** Needed to load this project's issues, used to populate the Epic field's options and to
+   *  resolve the linked-epic/subtask-parent chips — optional so a panel opened without it (e.g. in
+   *  isolation) just skips that field and those chips. */
   readonly projectKey = input<string | null>(null);
   /** Owner/Admin only — title, description, priority and delete are gated on this; status and
    *  comments are not (see IssueServiceImpl.changeStatus's javadoc for why status stays open). */
@@ -52,9 +59,21 @@ export class IssueDetailPanel {
   readonly confirmingDeleteIssue = signal(false);
   readonly confirmingDeleteCommentId = signal<string | null>(null);
 
-  /** This project's Epics, for the Epic field's options and for resolving the linked-epic chip —
-   *  loaded once per projectKey, independent of which issue is currently open. */
-  readonly epics = signal<Issue[]>([]);
+  /** This project's non-Subtask issues, for the Epic field's options, for resolving the
+   *  linked-epic chip, and for resolving a Subtask's parent chip — loaded once per projectKey,
+   *  independent of which issue is currently open. */
+  readonly projectIssues = signal<Issue[]>([]);
+
+  /** The key currently being displayed, which drifts from `issueKey()` once the user drills into a
+   *  subtask — see `openSubtask`. Doubles as the race-guard for in-flight requests: a response is
+   *  only applied if this still matches the key it was requested for. */
+  readonly displayedIssueKey = signal<string | null>(null);
+
+  readonly subtasks = signal<Issue[]>([]);
+  readonly loadingSubtasks = signal(false);
+  readonly subtaskError = signal<string | null>(null);
+  readonly newSubtaskTitle = signal('');
+  readonly creatingSubtask = signal(false);
 
   /** Staged edits for title/status/priority/storyPoints/description/parentId — not sent until
    *  save() is called. */
@@ -86,6 +105,11 @@ export class IssueDetailPanel {
     return !!issue?.parentId && this.draftParentId() === null;
   });
 
+  /** This project's Epics, derived from `projectIssues` for the Epic field's options. */
+  readonly epics = computed<Issue[]>(() =>
+    this.projectIssues().filter((issue) => issue.type === 'EPIC'),
+  );
+
   /** The issue's linked Epic, resolved from the loaded `epics` list — null if unlinked, or if the
    *  epic couldn't be resolved (e.g. no projectKey was provided). */
   readonly linkedEpic = computed<Issue | null>(() => {
@@ -96,42 +120,165 @@ export class IssueDetailPanel {
     return this.epics().find((epic) => epic.id === parentId) ?? null;
   });
 
+  /** A Subtask's parent issue, resolved from `projectIssues` the same way `linkedEpic` resolves an
+   *  Epic — null if it can't be resolved from what's already loaded (e.g. no projectKey given).
+   *  There's no by-id lookup endpoint, so this is a deliberate, accepted limitation rather than an
+   *  extra round trip. */
+  readonly parentIssue = computed<Issue | null>(() => {
+    const issue = this.issue();
+    if (issue?.type !== 'SUBTASK' || !issue.parentId) {
+      return null;
+    }
+    return this.projectIssues().find((candidate) => candidate.id === issue.parentId) ?? null;
+  });
+
+  /** Subtasks are checklist-style children of a STORY/TASK/BUG only — not of an EPIC, and not of
+   *  another SUBTASK (no nesting), mirroring the backend's parent-link rules. */
+  readonly canHaveSubtasks = computed(() => {
+    const type = this.issue()?.type;
+    return type === 'STORY' || type === 'TASK' || type === 'BUG';
+  });
+
+  readonly subtaskProgressLabel = computed<string | null>(() => {
+    const subtasks = this.subtasks();
+    if (subtasks.length === 0) {
+      return null;
+    }
+    const done = subtasks.filter((subtask) => subtask.status === 'DONE').length;
+    return `${done}/${subtasks.length} done`;
+  });
+
   constructor() {
     effect(() => this.load(this.issueKey()));
     effect(() => {
       const projectKey = this.projectKey();
       if (projectKey) {
-        this.loadEpics(projectKey);
+        this.loadProjectIssues(projectKey);
       }
     });
   }
 
   private load(issueKey: string): void {
+    this.displayedIssueKey.set(issueKey);
     this.loading.set(true);
     this.errorMessage.set(null);
     this.issue.set(null);
     this.comments.set([]);
+    this.subtasks.set([]);
+    this.subtaskError.set(null);
+    this.newSubtaskTitle.set('');
     this.issueService.get(issueKey).subscribe({
       next: (issue) => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
         this.issue.set(issue);
         this.resetDraft(issue);
         this.loading.set(false);
+        if (this.canLoadSubtasksFor(issue.type)) {
+          this.loadSubtasks(issueKey);
+        }
       },
       error: () => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
         this.loading.set(false);
         this.errorMessage.set('Failed to load the issue.');
       },
     });
     this.commentService.listForIssue(issueKey).subscribe({
-      next: (comments) => this.comments.set(comments),
+      next: (comments) => {
+        if (this.displayedIssueKey() === issueKey) {
+          this.comments.set(comments);
+        }
+      },
     });
   }
 
-  private loadEpics(projectKey: string): void {
-    this.issueService.listEpics(projectKey).subscribe({
-      next: (epics) => this.epics.set(epics),
-      // Non-critical: the Epic field just has no options and the linked-epic chip stays hidden.
+  private canLoadSubtasksFor(type: IssueType): boolean {
+    return type === 'STORY' || type === 'TASK' || type === 'BUG';
+  }
+
+  private loadSubtasks(issueKey: string): void {
+    this.loadingSubtasks.set(true);
+    this.issueService.listSubtasks(issueKey).subscribe({
+      next: (subtasks) => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingSubtasks.set(false);
+        this.subtasks.set(subtasks);
+      },
+      error: () => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingSubtasks.set(false);
+        this.subtaskError.set('Failed to load subtasks.');
+      },
+    });
+  }
+
+  private loadProjectIssues(projectKey: string): void {
+    this.issueService.listForProject(projectKey).subscribe({
+      next: (issues) => this.projectIssues.set(issues),
+      // Non-critical: the Epic field just has no options and the linked-epic/parent chips stay hidden.
       error: () => {},
+    });
+  }
+
+  /** Swaps the panel to show a subtask in place of its parent — a lightweight drill-down rather
+   *  than a full navigation stack, since there's nowhere further to drill from a Subtask (it can't
+   *  have subtasks of its own). Closing the panel from here returns to the board, not to the parent. */
+  openSubtask(subtaskKey: string): void {
+    this.load(subtaskKey);
+  }
+
+  submitSubtask(): void {
+    const issue = this.issue();
+    const title = this.newSubtaskTitle().trim();
+    if (!issue || !title || !this.canManage() || this.creatingSubtask()) {
+      return;
+    }
+    const parentKey = issue.key;
+    this.creatingSubtask.set(true);
+    this.subtaskError.set(null);
+    this.issueService.createSubtask(parentKey, { title }).subscribe({
+      next: (subtask) => {
+        this.creatingSubtask.set(false);
+        if (this.displayedIssueKey() !== parentKey) {
+          return;
+        }
+        this.subtasks.update((list) => [...list, subtask]);
+        this.newSubtaskTitle.set('');
+      },
+      error: () => {
+        this.creatingSubtask.set(false);
+        if (this.displayedIssueKey() === parentKey) {
+          this.subtaskError.set('Failed to create the subtask.');
+        }
+      },
+    });
+  }
+
+  changeSubtaskStatus(subtask: Issue, status: IssueStatus): void {
+    const previous = this.subtasks();
+    this.subtasks.set(
+      previous.map((candidate) =>
+        candidate.key === subtask.key ? { ...candidate, status } : candidate,
+      ),
+    );
+    this.issueService.changeStatus(subtask.key, status).subscribe({
+      next: (updated) => {
+        this.subtasks.update((list) =>
+          list.map((candidate) => (candidate.key === updated.key ? updated : candidate)),
+        );
+      },
+      error: () => {
+        this.subtasks.set(previous);
+        this.subtaskError.set(`Failed to change ${subtask.key}'s status.`);
+      },
     });
   }
 
@@ -195,7 +342,7 @@ export class IssueDetailPanel {
       return;
     }
 
-    const savingKey = this.issueKey();
+    const savingKey = this.displayedIssueKey();
     this.saving.set(true);
     this.errorMessage.set(null);
 
@@ -210,7 +357,7 @@ export class IssueDetailPanel {
         return this.issueService.changeStatus(issue.key, status).pipe(
           catchError(() => {
             this.saving.set(false);
-            if (this.issueKey() === savingKey) {
+            if (this.displayedIssueKey() === savingKey) {
               // The PATCH already succeeded server-side, so reflect it locally even though the
               // status change failed — otherwise local state would diverge from the server.
               this.issue.set(patched);
@@ -231,7 +378,7 @@ export class IssueDetailPanel {
     saved$.subscribe({
       next: (saved) => {
         this.saving.set(false);
-        if (this.issueKey() !== savingKey) {
+        if (this.displayedIssueKey() !== savingKey) {
           return;
         }
         this.issue.set(saved);
@@ -240,7 +387,7 @@ export class IssueDetailPanel {
       },
       error: () => {
         this.saving.set(false);
-        if (this.issueKey() !== savingKey) {
+        if (this.displayedIssueKey() !== savingKey) {
           return;
         }
         this.errorMessage.set('Failed to save changes.');

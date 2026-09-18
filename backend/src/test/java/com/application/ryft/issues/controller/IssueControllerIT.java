@@ -592,7 +592,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .content(objectMapper.writeValueAsString(
                                 new UpdateIssueRequest(null, null, null, null, null, issue.id()))))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("An issue cannot be linked to itself as its parent Epic"));
+                .andExpect(jsonPath("$.message").value("An issue cannot be linked to itself as its parent"));
     }
 
     @Test

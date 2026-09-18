@@ -36,3 +36,8 @@
   color: var(--epic);
   background: var(--epic-bg);
 }
+
+.type-subtask {
+  color: var(--subtask);
+  background: var(--subtask-bg);
+}

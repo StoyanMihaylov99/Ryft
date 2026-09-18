@@ -2,6 +2,7 @@ package com.application.ryft.issues.service;
 
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
+import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
@@ -11,7 +12,7 @@ import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
-import com.application.ryft.issues.exception.InvalidEpicLinkException;
+import com.application.ryft.issues.exception.InvalidParentLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
@@ -51,10 +52,7 @@ public class IssueServiceImpl implements IssueService {
         if (request.assigneeId() != null) {
             requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
         }
-        if (request.parentId() != null) {
-            requireStoryTaskOrBug(request.type());
-            requireEpicParent(request.parentId(), project.id());
-        }
+        validateParentOnCreate(request.type(), request.parentId(), project.id());
 
         IssuePriority priority = request.priority() != null ? request.priority() : IssuePriority.MEDIUM;
         String description = request.description() == null ? null : request.description().trim();
@@ -72,7 +70,7 @@ public class IssueServiceImpl implements IssueService {
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdOrderByCreatedAtAsc(project.id()).stream()
+        return issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(project.id(), IssueType.SUBTASK).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -81,7 +79,8 @@ public class IssueServiceImpl implements IssueService {
     @Transactional(readOnly = true)
     public List<IssueResponse> listForProject(UUID callerId, String projectKey, UUID sprintId) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(project.id(), sprintId).stream()
+        return issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId,
+                IssueType.SUBTASK).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -90,7 +89,8 @@ public class IssueServiceImpl implements IssueService {
     @Transactional(readOnly = true)
     public List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(project.id()).stream()
+        return issueRepository.findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(project.id(),
+                IssueType.SUBTASK).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -108,7 +108,8 @@ public class IssueServiceImpl implements IssueService {
     @Transactional(readOnly = true)
     public List<IssueResponse> listForSprint(UUID callerId, String projectKey, UUID sprintId) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(project.id(), sprintId).stream()
+        return issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId,
+                IssueType.SUBTASK).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -186,32 +187,65 @@ public class IssueServiceImpl implements IssueService {
         if (request.parentId() == null) {
             return;
         }
-        requireStoryTaskOrBug(issue.getType());
         if (request.parentId().equals(issue.getId())) {
-            throw new InvalidEpicLinkException("An issue cannot be linked to itself as its parent Epic");
+            throw new InvalidParentLinkException("An issue cannot be linked to itself as its parent");
         }
-        requireEpicParent(request.parentId(), issue.getProjectId());
+        requireParentAllowedForType(issue.getType(), request.parentId(), issue.getProjectId());
         issue.setParentIssueId(request.parentId());
     }
 
-    private void requireStoryTaskOrBug(IssueType type) {
-        if (type != IssueType.STORY && type != IssueType.TASK && type != IssueType.BUG) {
-            throw new InvalidEpicLinkException("Only Story, Task, or Bug issues can be linked to an Epic");
+    /**
+     * {@code parentId == null} is valid for EPIC (no parent) and STORY/TASK/BUG (parent is optional);
+     * it's rejected for SUBTASK by the create-only caller, {@link #validateParentOnCreate} — a null
+     * check here would be redundant since {@code applyParentId} above never calls this with a null id
+     * (null there means "leave the existing link alone").
+     */
+    private void requireParentAllowedForType(IssueType type, UUID parentId, UUID projectId) {
+        switch (type) {
+            case EPIC -> throw new InvalidParentLinkException("An Epic cannot have a parent");
+            case SUBTASK -> requireStoryTaskOrBugParent(parentId, projectId);
+            case STORY, TASK, BUG -> requireEpicParent(parentId, projectId);
         }
     }
 
-    private Issue requireEpicParent(UUID parentId, UUID projectId) {
+    private void validateParentOnCreate(IssueType type, UUID parentId, UUID projectId) {
+        if (parentId == null) {
+            if (type == IssueType.SUBTASK) {
+                throw new InvalidParentLinkException("A Subtask must have a parent issue");
+            }
+            return;
+        }
+        requireParentAllowedForType(type, parentId, projectId);
+    }
+
+    private Issue requireParentInProject(UUID parentId, UUID projectId) {
         Optional<Issue> parent = issueRepository.findByIdAndProjectId(parentId, projectId);
         if (parent.isEmpty()) {
             if (issueRepository.existsById(parentId)) {
-                throw new InvalidEpicLinkException("Epic " + parentId + " does not belong to this project");
+                throw new InvalidParentLinkException("Issue " + parentId + " does not belong to this project");
             }
-            throw new InvalidEpicLinkException("Epic " + parentId + " does not exist");
-        }
-        if (parent.get().getType() != IssueType.EPIC) {
-            throw new InvalidEpicLinkException("Issue " + parent.get().getKey() + " is not an Epic");
+            throw new InvalidParentLinkException("Issue " + parentId + " does not exist");
         }
         return parent.get();
+    }
+
+    private void requireEpicParent(UUID parentId, UUID projectId) {
+        Issue parent = requireParentInProject(parentId, projectId);
+        if (parent.getType() != IssueType.EPIC) {
+            throw new InvalidParentLinkException("Issue " + parent.getKey() + " is not an Epic");
+        }
+    }
+
+    private void requireStoryTaskOrBugParent(UUID parentId, UUID projectId) {
+        requireSubtaskableParentType(requireParentInProject(parentId, projectId));
+    }
+
+    private void requireSubtaskableParentType(Issue parent) {
+        if (parent.getType() != IssueType.STORY && parent.getType() != IssueType.TASK
+                && parent.getType() != IssueType.BUG) {
+            throw new InvalidParentLinkException(
+                    "Issue " + parent.getKey() + " cannot have Subtasks — only Story, Task, or Bug issues can");
+        }
     }
 
     private void setStatus(Issue issue, IssueStatus status) {
@@ -226,8 +260,60 @@ public class IssueServiceImpl implements IssueService {
         String projectKey = projectKeyOf(issue);
         projectAccess.requireMembership(callerId, projectKey);
         requireOwnerOrAdmin(callerId, projectKey);
+
+        if (issue.getType() == IssueType.EPIC) {
+            unlinkChildren(issue);
+        } else {
+            cascadeDeleteSubtasks(issue);
+        }
         commentRepository.deleteAllByIssueId(issue.getId());
         issueRepository.delete(issue);
+    }
+
+    /** Deleting an Epic must not take its linked Stories/Tasks/Bugs down with it — see IssueService#delete. */
+    private void unlinkChildren(Issue epic) {
+        issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(epic.getProjectId(), epic.getId())
+                .forEach(child -> child.setParentIssueId(null));
+    }
+
+    /** A Subtask has no independent value once its parent is gone — its own comments go with it too. */
+    private void cascadeDeleteSubtasks(Issue parent) {
+        List<Issue> subtasks = issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(parent.getId());
+        subtasks.forEach(subtask -> commentRepository.deleteAllByIssueId(subtask.getId()));
+        issueRepository.deleteAll(subtasks);
+    }
+
+    @Override
+    @Transactional
+    public IssueResponse createSubtask(UUID callerId, String issueKey, CreateSubtaskRequest request) {
+        Issue parent = requireIssue(issueKey);
+        String projectKey = projectKeyOf(parent);
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        requireOwnerOrAdmin(callerId, projectKey);
+        requireSubtaskableParentType(parent);
+        if (request.assigneeId() != null) {
+            requireAssigneeIsProjectMember(callerId, projectKey, request.assigneeId());
+        }
+
+        IssuePriority priority = request.priority() != null ? request.priority() : IssuePriority.MEDIUM;
+        String description = request.description() == null ? null : request.description().trim();
+        String subtaskKey = nextIssueKey(project.id(), project.key());
+        double rank = nextBacklogRank(project.id());
+
+        Issue subtask = new Issue(project.id(), subtaskKey, IssueType.SUBTASK, request.title().trim(), description,
+                priority, request.assigneeId(), callerId, rank);
+        subtask.setParentIssueId(parent.getId());
+        return IssueResponse.from(issueRepository.save(subtask));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<IssueResponse> listSubtasks(UUID callerId, String issueKey) {
+        Issue issue = requireIssue(issueKey);
+        projectAccess.requireMembership(callerId, projectKeyOf(issue));
+        return issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(issue.getId()).stream()
+                .map(IssueResponse::from)
+                .toList();
     }
 
     @Override

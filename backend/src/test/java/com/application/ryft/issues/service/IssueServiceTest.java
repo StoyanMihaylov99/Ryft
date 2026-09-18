@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
+import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
@@ -18,7 +19,7 @@ import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.AssigneeNotAProjectMemberException;
 import com.application.ryft.issues.exception.InsufficientProjectRoleException;
-import com.application.ryft.issues.exception.InvalidEpicLinkException;
+import com.application.ryft.issues.exception.InvalidParentLinkException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.repository.CommentRepository;
@@ -334,7 +335,8 @@ class IssueServiceTest {
     void listForProjectReturnsProjectsIssues() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
-        when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId)).thenReturn(List.of(issue));
+        when(issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(projectId, IssueType.SUBTASK))
+                .thenReturn(List.of(issue));
 
         List<IssueResponse> result = issueService.listForProject(callerId, "TRK");
 
@@ -349,8 +351,8 @@ class IssueServiceTest {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
                 callerId, 1000.0);
         issue.setSprintId(sprintId);
-        when(issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(projectId, sprintId))
-                .thenReturn(List.of(issue));
+        when(issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(projectId, sprintId,
+                IssueType.SUBTASK)).thenReturn(List.of(issue));
 
         List<IssueResponse> result = issueService.listForProject(callerId, "TRK", sprintId);
 
@@ -363,8 +365,8 @@ class IssueServiceTest {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
                 callerId, 1000.0);
-        when(issueRepository.findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(projectId))
-                .thenReturn(List.of(issue));
+        when(issueRepository.findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(projectId,
+                IssueType.SUBTASK)).thenReturn(List.of(issue));
 
         List<IssueResponse> result = issueService.listBacklogForProject(callerId, "TRK");
 
@@ -380,13 +382,49 @@ class IssueServiceTest {
                 callerId, 1000.0);
         issue.setSprintId(sprintId);
         issue.setStatus(IssueStatus.DONE);
-        when(issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(projectId, sprintId))
-                .thenReturn(List.of(issue));
+        when(issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(projectId, sprintId,
+                IssueType.SUBTASK)).thenReturn(List.of(issue));
 
         List<IssueResponse> result = issueService.listForSprint(callerId, "TRK", sprintId);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).status()).isEqualTo(IssueStatus.DONE);
+    }
+
+    @Test
+    void listForProjectExcludesSubtasksFromTheQuery() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(projectId, IssueType.SUBTASK))
+                .thenReturn(List.of());
+
+        issueService.listForProject(callerId, "TRK");
+
+        verify(issueRepository).findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(projectId, IssueType.SUBTASK);
+    }
+
+    @Test
+    void listBacklogForProjectExcludesSubtasksFromTheQuery() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueRepository.findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(projectId,
+                IssueType.SUBTASK)).thenReturn(List.of());
+
+        issueService.listBacklogForProject(callerId, "TRK");
+
+        verify(issueRepository).findAllByProjectIdAndSprintIdIsNullAndTypeNotOrderByBacklogRankAsc(projectId,
+                IssueType.SUBTASK);
+    }
+
+    @Test
+    void listForSprintExcludesSubtasksFromTheQuery() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        UUID sprintId = UUID.randomUUID();
+        when(issueRepository.findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(projectId, sprintId,
+                IssueType.SUBTASK)).thenReturn(List.of());
+
+        issueService.listForSprint(callerId, "TRK", sprintId);
+
+        verify(issueRepository).findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(projectId, sprintId,
+                IssueType.SUBTASK);
     }
 
     @Test
@@ -569,7 +607,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
         verify(issueRepository, never()).save(any());
     }
 
@@ -583,7 +621,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
         verify(issueRepository, never()).save(any());
     }
 
@@ -597,7 +635,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.STORY, "Story", null, null, null, null, parentId)))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
         verify(issueRepository, never()).save(any());
     }
 
@@ -608,7 +646,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
                 new CreateIssueRequest(IssueType.EPIC, "Epic", null, null, null, null, UUID.randomUUID())))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
         verify(issueRepository, never()).save(any());
     }
 
@@ -644,7 +682,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-2",
                 new UpdateIssueRequest(null, null, null, null, null, parentId)))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
         assertThat(issue.getParentIssueId()).isNull();
     }
 
@@ -658,7 +696,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
                 new UpdateIssueRequest(null, null, null, null, null, UUID.randomUUID())))
-                .isInstanceOf(InvalidEpicLinkException.class);
+                .isInstanceOf(InvalidParentLinkException.class);
     }
 
     @Test
@@ -695,5 +733,243 @@ class IssueServiceTest {
         assertThat(unfinished.getSprintId()).isNull();
         assertThat(done.getSprintId()).isEqualTo(sprintId);
         verify(projectAccess, never()).isOwnerOrAdmin(any(), any());
+    }
+
+    @Test
+    void createSubtaskTypeWithoutParentIdThrows() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.SUBTASK, "Subtask", null, null, null, null, null)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskTypeWithEpicParentThrows() {
+        UUID parentId = UUID.randomUUID();
+        Issue epicParent = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.of(epicParent));
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.SUBTASK, "Subtask", null, null, null, null, parentId)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskTypeWithParentInDifferentProjectThrows() {
+        UUID parentId = UUID.randomUUID();
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.empty());
+        when(issueRepository.existsById(parentId)).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.SUBTASK, "Subtask", null, null, null, null, parentId)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskTypeWithStoryParentSucceeds() {
+        UUID parentId = UUID.randomUUID();
+        Issue storyParent = new Issue(projectId, "TRK-1", IssueType.STORY, "Story", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(parentId, projectId)).thenReturn(Optional.of(storyParent));
+        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
+        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        IssueResponse result = issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.SUBTASK, "Subtask", null, null, null, null, parentId));
+
+        assertThat(result.type()).isEqualTo(IssueType.SUBTASK);
+        assertThat(result.parentId()).isEqualTo(parentId);
+    }
+
+    @Test
+    void updateSubtaskParentToNonStoryTaskOrBugThrows() {
+        Issue subtask = new Issue(projectId, "TRK-2", IssueType.SUBTASK, "Subtask", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        UUID epicId = UUID.randomUUID();
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null, callerId,
+                500.0);
+        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(subtask));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(epicId, projectId)).thenReturn(Optional.of(epic));
+
+        assertThatThrownBy(() -> issueService.update(callerId, "TRK-2",
+                new UpdateIssueRequest(null, null, null, null, null, epicId)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        assertThat(subtask.getParentIssueId()).isNull();
+    }
+
+    @Test
+    void updateSubtaskParentToAnotherStoryTaskOrBugSucceeds() {
+        Issue subtask = new Issue(projectId, "TRK-2", IssueType.SUBTASK, "Subtask", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        UUID newParentId = UUID.randomUUID();
+        Issue newParent = new Issue(projectId, "TRK-3", IssueType.TASK, "Task", null, IssuePriority.MEDIUM, null,
+                callerId, 500.0);
+        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(subtask));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findByIdAndProjectId(newParentId, projectId)).thenReturn(Optional.of(newParent));
+
+        IssueResponse result = issueService.update(callerId, "TRK-2",
+                new UpdateIssueRequest(null, null, null, null, null, newParentId));
+
+        assertThat(result.parentId()).isEqualTo(newParentId);
+    }
+
+    @Test
+    void createSubtaskRejectsEpicParent() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.createSubtask(callerId, "TRK-1",
+                new CreateSubtaskRequest("Checklist item", null, null, null)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskRejectsSubtaskParent() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.SUBTASK, "Existing subtask", null,
+                IssuePriority.MEDIUM, null, callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> issueService.createSubtask(callerId, "TRK-1",
+                new CreateSubtaskRequest("Nested", null, null, null)))
+                .isInstanceOf(InvalidParentLinkException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskRejectsCallerWhoIsNotOwnerOrAdmin() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.STORY, "Parent", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
+
+        assertThatThrownBy(() -> issueService.createSubtask(callerId, "TRK-1",
+                new CreateSubtaskRequest("Checklist item", null, null, null)))
+                .isInstanceOf(InsufficientProjectRoleException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskRejectsAssigneeNotAProjectMember() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.STORY, "Parent", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        UUID outsiderId = UUID.randomUUID();
+        when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
+
+        assertThatThrownBy(() -> issueService.createSubtask(callerId, "TRK-1",
+                new CreateSubtaskRequest("Checklist item", null, null, outsiderId)))
+                .isInstanceOf(AssigneeNotAProjectMemberException.class);
+        verify(issueRepository, never()).save(any());
+    }
+
+    @Test
+    void createSubtaskUnderStoryCreatesLinkedSubtask() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.STORY, "Parent story", null, IssuePriority.MEDIUM,
+                null, callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
+        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(issueRepository.findFirstByProjectIdOrderByBacklogRankDesc(projectId)).thenReturn(Optional.empty());
+        when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        IssueResponse result = issueService.createSubtask(callerId, "TRK-1",
+                new CreateSubtaskRequest("Checklist item", null, null, null));
+
+        assertThat(result.type()).isEqualTo(IssueType.SUBTASK);
+        assertThat(result.parentId()).isEqualTo(parent.getId());
+        assertThat(result.priority()).isEqualTo(IssuePriority.MEDIUM);
+    }
+
+    @Test
+    void listSubtasksReturnsChildrenOfTheGivenIssue() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.STORY, "Parent", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        Issue subtask = new Issue(projectId, "TRK-2", IssueType.SUBTASK, "Checklist item", null, IssuePriority.MEDIUM,
+                null, callerId, 2000.0);
+        subtask.setParentIssueId(parent.getId());
+        when(issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(parent.getId())).thenReturn(List.of(subtask));
+
+        List<IssueResponse> result = issueService.listSubtasks(callerId, "TRK-1");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).type()).isEqualTo(IssueType.SUBTASK);
+        assertThat(result.get(0).parentId()).isEqualTo(parent.getId());
+    }
+
+    @Test
+    void deleteCascadesToSubtasksAndTheirComments() {
+        Issue parent = new Issue(projectId, "TRK-1", IssueType.STORY, "Parent", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(parent, "id", UUID.randomUUID());
+        Issue subtask = new Issue(projectId, "TRK-2", IssueType.SUBTASK, "Checklist item", null, IssuePriority.MEDIUM,
+                null, callerId, 2000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(subtask, "id", UUID.randomUUID());
+        subtask.setParentIssueId(parent.getId());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(parent));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findAllByParentIssueIdOrderByCreatedAtAsc(parent.getId())).thenReturn(List.of(subtask));
+
+        issueService.delete(callerId, "TRK-1");
+
+        verify(commentRepository).deleteAllByIssueId(subtask.getId());
+        verify(commentRepository).deleteAllByIssueId(parent.getId());
+        verify(issueRepository).deleteAll(List.of(subtask));
+        verify(issueRepository).delete(parent);
+    }
+
+    @Test
+    void deleteOfEpicUnlinksLinkedIssuesInsteadOfDeletingThem() {
+        Issue epic = new Issue(projectId, "TRK-1", IssueType.EPIC, "Epic", null, IssuePriority.MEDIUM, null, callerId,
+                1000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(epic, "id", UUID.randomUUID());
+        Issue linkedStory = new Issue(projectId, "TRK-2", IssueType.STORY, "Story", null, IssuePriority.MEDIUM, null,
+                callerId, 2000.0);
+        org.springframework.test.util.ReflectionTestUtils.setField(linkedStory, "id", UUID.randomUUID());
+        linkedStory.setParentIssueId(epic.getId());
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(epic));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueRepository.findAllByProjectIdAndParentIssueIdOrderByCreatedAtAsc(projectId, epic.getId()))
+                .thenReturn(List.of(linkedStory));
+
+        issueService.delete(callerId, "TRK-1");
+
+        assertThat(linkedStory.getParentIssueId()).isNull();
+        verify(issueRepository, never()).delete(linkedStory);
+        verify(issueRepository, never()).deleteAll(any());
+        verify(issueRepository).delete(epic);
+        verify(commentRepository).deleteAllByIssueId(epic.getId());
+        verify(commentRepository, never()).deleteAllByIssueId(linkedStory.getId());
     }
 }

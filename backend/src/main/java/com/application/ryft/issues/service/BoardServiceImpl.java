@@ -4,6 +4,7 @@ import com.application.ryft.issues.dto.BoardColumnResponse;
 import com.application.ryft.issues.dto.BoardResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.entity.Issue;
+import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.exception.ProjectNotFoundException;
 import com.application.ryft.issues.repository.IssueRepository;
@@ -45,7 +46,8 @@ public class BoardServiceImpl implements BoardService {
     public BoardResponse getBoard(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         WorkflowSchemeResponse scheme = requireWorkflowScheme(callerId, projectKey);
-        List<Issue> issues = issueRepository.findAllByProjectIdOrderByCreatedAtAsc(project.id());
+        List<Issue> issues = issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(project.id(),
+                IssueType.SUBTASK);
 
         List<BoardColumnResponse> columns = scheme.statuses().stream()
                 .sorted(Comparator.comparingInt(WorkflowStatusResponse::sortOrder))

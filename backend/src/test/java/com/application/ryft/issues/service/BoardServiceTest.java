@@ -69,7 +69,7 @@ class BoardServiceTest {
         Issue doneIssue = new Issue(projectId, "TRK-2", IssueType.BUG, "Done issue", null, IssuePriority.MEDIUM,
                 null, callerId, 3000.0);
         doneIssue.setStatus(IssueStatus.DONE);
-        when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId))
+        when(issueRepository.findAllByProjectIdAndTypeNotOrderByCreatedAtAsc(projectId, IssueType.SUBTASK))
                 .thenReturn(List.of(todoIssue, blockedIssue, doneIssue));
 
         BoardResponse result = boardService.getBoard(callerId, "TRK");

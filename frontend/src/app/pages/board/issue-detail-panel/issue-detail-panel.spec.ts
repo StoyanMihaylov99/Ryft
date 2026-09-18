@@ -51,9 +51,15 @@ describe('IssueDetailPanel', () => {
     httpMock.verify();
   });
 
-  function flushLoad(issueValue: Issue, comments: Comment[] = []): void {
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1`).flush(issueValue);
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/comments`).flush(comments);
+  /** A STORY/TASK/BUG issue (the default `issue()` type) also triggers a subtasks fetch — flushed
+   *  here with an empty list unless the caller passes some. */
+  function flushLoad(issueValue: Issue, comments: Comment[] = [], subtasks: Issue[] = []): void {
+    const key = issueValue.key;
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issueValue);
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush(comments);
+    if (issueValue.type === 'STORY' || issueValue.type === 'TASK' || issueValue.type === 'BUG') {
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/subtasks`).flush(subtasks);
+    }
   }
 
   function flushEpics(epics: Issue[] = []): void {
@@ -275,10 +281,7 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock
-      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
-      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    flushLoad(issue({ key: 'TRK-2', title: 'Other title' }));
 
     req.flush(issue({ title: 'New title' }));
 
@@ -298,10 +301,7 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock
-      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
-      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    flushLoad(issue({ key: 'TRK-2', title: 'Other title' }));
 
     req.flush(issue({ title: 'New title' }));
 
@@ -345,10 +345,7 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock
-      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
-      .flush(issue({ key: 'TRK-2', title: 'Other title' }));
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    flushLoad(issue({ key: 'TRK-2', title: 'Other title' }));
 
     expect(component.draftTitle()).toBe('Other title');
   });
@@ -446,10 +443,7 @@ describe('IssueDetailPanel', () => {
 
     fixture.componentRef.setInput('issueKey', 'TRK-2');
     fixture.detectChanges();
-    httpMock
-      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2`)
-      .flush(issue({ key: 'TRK-2', type: 'EPIC' }));
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    flushLoad(issue({ key: 'TRK-2', type: 'EPIC' }));
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('.epic-label'))).toBeNull();
@@ -549,5 +543,172 @@ describe('IssueDetailPanel', () => {
     req.flush(issue({ type: 'STORY', parentId: 'e1', priority: 'HIGH' }));
 
     expect(component.issue()?.parentId).toBe('e1');
+  });
+
+  it('hides the Subtasks section for an Epic issue', () => {
+    flushLoad(issue({ type: 'EPIC' }));
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.subtasks'))).toBeNull();
+  });
+
+  it('hides the Subtasks section for a Subtask issue', () => {
+    flushLoad(issue({ type: 'SUBTASK', parentId: 'p1' }));
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.subtasks'))).toBeNull();
+  });
+
+  it('hides the Epic field for a Subtask issue, showing the parent chip instead', () => {
+    flushLoad(issue({ type: 'SUBTASK', parentId: 'p1' }));
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-label'))).toBeNull();
+  });
+
+  it('loads and lists subtasks for a Story/Task/Bug issue', () => {
+    flushLoad(
+      issue({ type: 'STORY' }),
+      [],
+      [issue({ id: 's1', key: 'TRK-2', type: 'SUBTASK', title: 'Sub one', parentId: 'i1' })],
+    );
+    fixture.detectChanges();
+
+    const rows = fixture.debugElement.queryAll(By.css('.subtask-row'));
+    expect(rows.length).toBe(1);
+    expect(rows[0].nativeElement.textContent).toContain('TRK-2');
+    expect(rows[0].nativeElement.textContent).toContain('Sub one');
+  });
+
+  it('shows a done/total progress label once subtasks are loaded', () => {
+    flushLoad(
+      issue({ type: 'STORY' }),
+      [],
+      [
+        issue({ id: 's1', key: 'TRK-2', type: 'SUBTASK', status: 'DONE' }),
+        issue({ id: 's2', key: 'TRK-3', type: 'SUBTASK', status: 'TODO' }),
+      ],
+    );
+
+    expect(component.subtaskProgressLabel()).toBe('1/2 done');
+  });
+
+  it('creates a subtask with just a title and appends it to the list', () => {
+    fixture.componentRef.setInput('canManage', true);
+    flushLoad(issue({ type: 'STORY' }));
+    fixture.detectChanges();
+
+    component.newSubtaskTitle.set('New subtask');
+    component.submitSubtask();
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/subtasks`);
+    expect(req.request.body).toEqual({ title: 'New subtask' });
+    req.flush(
+      issue({ id: 's1', key: 'TRK-2', type: 'SUBTASK', title: 'New subtask', parentId: 'i1' }),
+    );
+
+    expect(component.subtasks().map((subtask) => subtask.key)).toEqual(['TRK-2']);
+    expect(component.newSubtaskTitle()).toBe('');
+  });
+
+  it('hides the add-subtask form when the caller cannot manage issues', () => {
+    flushLoad(issue({ type: 'STORY' }));
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.add-subtask'))).toBeNull();
+  });
+
+  it('does not create a subtask when the caller cannot manage issues', () => {
+    flushLoad(issue({ type: 'STORY' }));
+
+    component.newSubtaskTitle.set('Nope');
+    component.submitSubtask();
+
+    httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1/subtasks`);
+  });
+
+  it("changes a subtask's status via the status endpoint using its own key", () => {
+    const subtask = issue({
+      id: 's1',
+      key: 'TRK-2',
+      type: 'SUBTASK',
+      status: 'TODO',
+      parentId: 'i1',
+    });
+    flushLoad(issue({ type: 'STORY' }), [], [subtask]);
+    fixture.detectChanges();
+
+    component.changeSubtaskStatus(subtask, 'DONE');
+
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/status`);
+    expect(req.request.body).toEqual({ status: 'DONE' });
+    req.flush({ ...subtask, status: 'DONE' });
+
+    expect(component.subtasks().find((candidate) => candidate.key === 'TRK-2')?.status).toBe(
+      'DONE',
+    );
+  });
+
+  it('reverts the optimistic status update when changing a subtask status fails', () => {
+    const subtask = issue({
+      id: 's1',
+      key: 'TRK-2',
+      type: 'SUBTASK',
+      status: 'TODO',
+      parentId: 'i1',
+    });
+    flushLoad(issue({ type: 'STORY' }), [], [subtask]);
+
+    component.changeSubtaskStatus(subtask, 'DONE');
+    expect(component.subtasks()[0].status).toBe('DONE');
+
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/TRK-2/status`)
+      .flush('Server error', { status: 500, statusText: 'Server Error' });
+
+    expect(component.subtasks()[0].status).toBe('TODO');
+    expect(component.subtaskError()).toContain('TRK-2');
+  });
+
+  it('drills into a subtask when its row is clicked, replacing the currently displayed issue', () => {
+    const subtask = issue({
+      id: 's1',
+      key: 'TRK-2',
+      type: 'SUBTASK',
+      title: 'Sub one',
+      parentId: 'i1',
+    });
+    flushLoad(issue({ type: 'STORY' }), [], [subtask]);
+    fixture.detectChanges();
+
+    fixture.debugElement.query(By.css('.subtask-link')).nativeElement.click();
+
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2`).flush(subtask);
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+
+    expect(component.issue()?.key).toBe('TRK-2');
+    expect(component.issue()?.title).toBe('Sub one');
+  });
+
+  it("shows the parent chip for a Subtask once the parent is resolved from the project's loaded issues", () => {
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'SUBTASK', parentId: 'p1' }));
+    flushEpics([issue({ id: 'p1', key: 'TRK-5', type: 'STORY', title: 'Parent story' })]);
+    fixture.detectChanges();
+
+    const chip = fixture.debugElement.query(By.css('.parent-chip'));
+    expect(chip.nativeElement.textContent).toContain('Parent story');
+    expect(chip.nativeElement.textContent).toContain('TRK-5');
+  });
+
+  it("hides the parent chip for a Subtask when the parent isn't among the project's loaded issues", () => {
+    fixture.componentRef.setInput('projectKey', 'TRK');
+    fixture.detectChanges();
+    flushLoad(issue({ type: 'SUBTASK', parentId: 'p1' }));
+    flushEpics();
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.parent-chip'))).toBeNull();
   });
 });
