@@ -2,6 +2,7 @@ package com.application.ryft.issues.service;
 
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
+import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import java.util.List;
@@ -11,6 +12,7 @@ public interface IssueService {
 
     IssueResponse create(UUID callerId, String projectKey, CreateIssueRequest request);
 
+    /** Every list/backlog/sprint method below excludes SUBTASK issues — see {@link #listSubtasks}. */
     List<IssueResponse> listForProject(UUID callerId, String projectKey);
 
     /** Sprint-scoped variant of {@link #listForProject(UUID, String)}, additive — used by callers that
@@ -51,5 +53,20 @@ public interface IssueService {
      */
     void moveUnfinishedIssuesToBacklog(UUID callerId, String projectKey, UUID sprintId);
 
+    /**
+     * Deleting an EPIC nulls out {@code parentId} on every issue that was linked to it rather than
+     * deleting them (an Epic disappearing shouldn't take its Stories/Tasks/Bugs with it). Deleting any
+     * other issue cascade-deletes its own SUBTASKs (and their comments) first — a Subtask has no
+     * independent value once its parent is gone.
+     */
     void delete(UUID callerId, String issueKey);
+
+    /**
+     * Creates a SUBTASK whose {@code parentId} is the given issue — Owner/Admin only, same gate as
+     * {@link #create}. The parent must be a STORY, TASK, or BUG (not an EPIC, not itself a SUBTASK).
+     */
+    IssueResponse createSubtask(UUID callerId, String issueKey, CreateSubtaskRequest request);
+
+    /** Subtasks of the given issue, ordered by creation time — any project member. */
+    List<IssueResponse> listSubtasks(UUID callerId, String issueKey);
 }

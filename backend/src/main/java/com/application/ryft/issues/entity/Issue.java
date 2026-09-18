@@ -84,8 +84,9 @@ public class Issue {
 
     /**
      * Plain id, not a JPA relation (same pattern as sprintId/assigneeId — avoids self-join complexity).
-     * Doubles as the epic link (STORY/TASK/BUG -&gt; EPIC) and, later, the subtask parent link; which
-     * meaning applies is derived from the issue's own type, validated in IssueServiceImpl.
+     * Doubles as the epic link (STORY/TASK/BUG -&gt; EPIC) and the subtask parent link
+     * (SUBTASK -&gt; STORY/TASK/BUG); which meaning applies is derived from the issue's own type,
+     * validated in IssueServiceImpl.
      */
     @Column(name = "parent_issue_id")
     @Setter

@@ -3,7 +3,13 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { environment } from '../../../environments/environment';
-import { CreateIssueRequest, Issue, IssueStatus, UpdateIssueRequest } from './models';
+import {
+  CreateIssueRequest,
+  CreateSubtaskRequest,
+  Issue,
+  IssueStatus,
+  UpdateIssueRequest,
+} from './models';
 
 @Injectable({ providedIn: 'root' })
 export class IssueService {
@@ -67,5 +73,13 @@ export class IssueService {
 
   delete(issueKey: string): Observable<void> {
     return this.http.delete<void>(`${environment.apiBaseUrl}/issues/${issueKey}`);
+  }
+
+  createSubtask(issueKey: string, request: CreateSubtaskRequest): Observable<Issue> {
+    return this.http.post<Issue>(`${environment.apiBaseUrl}/issues/${issueKey}/subtasks`, request);
+  }
+
+  listSubtasks(issueKey: string): Observable<Issue[]> {
+    return this.http.get<Issue[]>(`${environment.apiBaseUrl}/issues/${issueKey}/subtasks`);
   }
 }

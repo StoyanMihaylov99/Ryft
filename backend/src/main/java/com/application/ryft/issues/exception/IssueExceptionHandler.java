@@ -36,8 +36,8 @@ public class IssueExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
-    @ExceptionHandler(InvalidEpicLinkException.class)
-    public ResponseEntity<ApiError> handleInvalidEpicLink(InvalidEpicLinkException ex) {
+    @ExceptionHandler(InvalidParentLinkException.class)
+    public ResponseEntity<ApiError> handleInvalidParentLink(InvalidParentLinkException ex) {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
