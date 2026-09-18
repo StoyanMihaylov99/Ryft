@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { Comment } from '../../../core/comment/models';
-import { Issue } from '../../../core/issue/models';
+import { EpicProgress, Issue } from '../../../core/issue/models';
 import { environment } from '../../../../environments/environment';
 import { IssueDetailPanel } from './issue-detail-panel';
 
@@ -51,14 +51,23 @@ describe('IssueDetailPanel', () => {
     httpMock.verify();
   });
 
-  /** A STORY/TASK/BUG issue (the default `issue()` type) also triggers a subtasks fetch — flushed
-   *  here with an empty list unless the caller passes some. */
-  function flushLoad(issueValue: Issue, comments: Comment[] = [], subtasks: Issue[] = []): void {
+  /** A STORY/TASK/BUG issue (the default `issue()` type) also triggers a subtasks fetch, and an
+   *  EPIC triggers a progress fetch — both flushed here with an empty/zeroed default unless the
+   *  caller passes one. */
+  function flushLoad(
+    issueValue: Issue,
+    comments: Comment[] = [],
+    subtasks: Issue[] = [],
+    epicProgress: EpicProgress = { totalCount: 0, doneCount: 0, percentDone: 0 },
+  ): void {
     const key = issueValue.key;
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issueValue);
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush(comments);
     if (issueValue.type === 'STORY' || issueValue.type === 'TASK' || issueValue.type === 'BUG') {
       httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/subtasks`).flush(subtasks);
+    }
+    if (issueValue.type === 'EPIC') {
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/progress`).flush(epicProgress);
     }
   }
 
@@ -550,6 +559,62 @@ describe('IssueDetailPanel', () => {
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('.subtasks'))).toBeNull();
+  });
+
+  it('fetches and renders progress for an Epic issue', () => {
+    flushLoad(issue({ type: 'EPIC' }), [], [], { totalCount: 7, doneCount: 3, percentDone: 300 / 7 });
+    fixture.detectChanges();
+
+    expect(component.epicProgressLabel()).toBe('3/7 done');
+    expect(component.epicProgressPercent()).toBe(43);
+
+    const bar = fixture.debugElement.query(By.css('.progress-track'));
+    expect(bar.attributes['aria-valuenow']).toBe('43');
+    expect(bar.attributes['aria-valuemin']).toBe('0');
+    expect(bar.attributes['aria-valuemax']).toBe('100');
+    expect(bar.attributes['aria-valuetext']).toBe('3 of 7 done');
+    const label = fixture.debugElement.query(By.css('.epic-progress-label'));
+    expect(label.nativeElement.textContent).toContain('3/7 done');
+  });
+
+  it('shows a zeroed progress bar and "0/0 done" for an Epic with no linked issues, without NaN', () => {
+    flushLoad(issue({ type: 'EPIC' }), [], [], { totalCount: 0, doneCount: 0, percentDone: 0 });
+    fixture.detectChanges();
+
+    expect(component.epicProgressLabel()).toBe('0/0 done');
+    expect(component.epicProgressPercent()).toBe(0);
+    const fill = fixture.debugElement.query(By.css('.progress-fill'))
+      .nativeElement as HTMLElement;
+    expect(fill.style.width).toBe('0%');
+  });
+
+  it('surfaces an error and does not crash when fetching Epic progress fails', () => {
+    const key = 'TRK-1';
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issue({ type: 'EPIC' }));
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush([]);
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/issues/${key}/progress`)
+      .flush('Server error', { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    expect(component.epicProgressError()).toBe('Failed to load progress.');
+    expect(component.epicProgress()).toBeNull();
+    const error = fixture.debugElement.query(By.css('.epic-progress .field-error'));
+    expect(error.nativeElement.textContent).toContain('Failed to load progress.');
+  });
+
+  it('does not request progress for a non-Epic issue', () => {
+    flushLoad(issue({ type: 'STORY' }));
+
+    httpMock.expectNone(`${environment.apiBaseUrl}/issues/TRK-1/progress`);
+    expect(component.epicProgress()).toBeNull();
+  });
+
+  it('does not show the progress section for a non-Epic issue', () => {
+    flushLoad(issue({ type: 'STORY' }));
+    fixture.detectChanges();
+
+    expect(fixture.debugElement.query(By.css('.epic-progress'))).toBeNull();
   });
 
   it('hides the Subtasks section for a Subtask issue', () => {

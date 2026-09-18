@@ -59,3 +59,12 @@ export interface CreateSubtaskRequest {
   priority?: IssuePriority | null;
   assigneeId?: string | null;
 }
+
+/** `totalCount`/`doneCount` cover only the Epic's directly-linked STORY/TASK/BUG issues — a linked
+ *  issue's own Subtasks are a level further down and are not rolled up into this count (mirrors
+ *  EpicProgressResponse's javadoc on the backend). `percentDone` is `0` when `totalCount` is `0`. */
+export interface EpicProgress {
+  totalCount: number;
+  doneCount: number;
+  percentDone: number;
+}

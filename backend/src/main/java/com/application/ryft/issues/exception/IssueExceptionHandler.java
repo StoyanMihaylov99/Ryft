@@ -41,6 +41,11 @@ public class IssueExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(NotAnEpicException.class)
+    public ResponseEntity<ApiError> handleNotAnEpic(NotAnEpicException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(InsufficientProjectRoleException.class)
     public ResponseEntity<ApiError> handleInsufficientProjectRole(InsufficientProjectRoleException ex) {
         return status(HttpStatus.FORBIDDEN, ex.getMessage());

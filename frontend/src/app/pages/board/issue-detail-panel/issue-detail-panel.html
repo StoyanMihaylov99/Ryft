@@ -125,6 +125,31 @@
         ></textarea>
       </label>
 
+      @if (issue.type === 'EPIC') {
+        <section class="epic-progress" aria-labelledby="epic-progress-heading">
+          <h3 id="epic-progress-heading">Progress</h3>
+
+          @if (epicProgressError()) {
+            <p class="field-error" role="alert">{{ epicProgressError() }}</p>
+          } @else if (loadingEpicProgress()) {
+            <p class="empty-state">Loading progress…</p>
+          } @else if (epicProgress(); as progress) {
+            <div
+              class="progress-track"
+              role="progressbar"
+              aria-labelledby="epic-progress-heading"
+              [attr.aria-valuenow]="epicProgressPercent()"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              [attr.aria-valuetext]="progress.doneCount + ' of ' + progress.totalCount + ' done'"
+            >
+              <div class="progress-fill" [style.width.%]="epicProgressPercent()"></div>
+            </div>
+            <p class="epic-progress-label">{{ epicProgressLabel() }}</p>
+          }
+        </section>
+      }
+
       @if (canHaveSubtasks()) {
         <section class="subtasks" aria-labelledby="subtasks-heading">
           <h3 id="subtasks-heading">

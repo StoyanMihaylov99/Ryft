@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 import {
   CreateIssueRequest,
   CreateSubtaskRequest,
+  EpicProgress,
   Issue,
   IssueStatus,
   UpdateIssueRequest,
@@ -81,5 +82,10 @@ export class IssueService {
 
   listSubtasks(issueKey: string): Observable<Issue[]> {
     return this.http.get<Issue[]>(`${environment.apiBaseUrl}/issues/${issueKey}/subtasks`);
+  }
+
+  /** `epicKey` must identify an EPIC issue — 400 otherwise. See EpicProgress's javadoc for scope. */
+  getEpicProgress(epicKey: string): Observable<EpicProgress> {
+    return this.http.get<EpicProgress>(`${environment.apiBaseUrl}/issues/${epicKey}/progress`);
   }
 }
