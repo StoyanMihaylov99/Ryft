@@ -44,10 +44,23 @@ class IssueProjectAccess {
                 .anyMatch(member -> member.userId().equals(userId));
     }
 
-    /** Owner/Admin manage issues (create/edit/delete); every other role only comments and changes status. */
+    /**
+     * The caller's role on the project — only ever called right after {@link #requireMembership} has
+     * already succeeded for the same caller/project, so an empty {@link ProjectService#getRole} result
+     * here would mean membership was revoked mid-request; treated as the same 403 that would have
+     * resulted from calling {@link #requireMembership} again.
+     */
+    ProjectRole getRole(UUID callerId, String projectKey) {
+        return projectService.getRole(callerId, projectKey).orElseThrow(NotAProjectMemberException::new);
+    }
+
+    /** Owner/Admin manage issues (create/delete); Member may also edit issues they're involved with — see IssueServiceImpl.update. */
     boolean isOwnerOrAdmin(UUID callerId, String projectKey) {
-        return projectService.listMembers(callerId, projectKey).stream()
-                .filter(member -> member.userId().equals(callerId))
-                .anyMatch(member -> member.role() == ProjectRole.OWNER || member.role() == ProjectRole.ADMIN);
+        ProjectRole role = getRole(callerId, projectKey);
+        return role == ProjectRole.OWNER || role == ProjectRole.ADMIN;
+    }
+
+    boolean isViewer(UUID callerId, String projectKey) {
+        return getRole(callerId, projectKey) == ProjectRole.VIEWER;
     }
 }

@@ -160,6 +160,38 @@ class ProjectServiceTest {
     }
 
     @Test
+    void getRoleReturnsCallersRoleWhenAMember() {
+        stubWorkspace();
+        when(projectRepository.findByWorkspaceIdAndKey(workspaceId, "TRK")).thenReturn(Optional.of(project));
+        ProjectMember admin = new ProjectMember(project, callerId, ProjectRole.ADMIN);
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), callerId)).thenReturn(Optional.of(admin));
+
+        Optional<ProjectRole> result = projectService.getRole(callerId, "TRK");
+
+        assertThat(result).contains(ProjectRole.ADMIN);
+    }
+
+    @Test
+    void getRoleReturnsEmptyForNonMemberWithoutThrowing() {
+        stubWorkspace();
+        when(projectRepository.findByWorkspaceIdAndKey(workspaceId, "TRK")).thenReturn(Optional.of(project));
+        when(projectMemberRepository.findByProjectIdAndUserId(project.getId(), callerId)).thenReturn(Optional.empty());
+
+        Optional<ProjectRole> result = projectService.getRole(callerId, "TRK");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void getRoleRequiresProjectToExist() {
+        stubWorkspace();
+        when(projectRepository.findByWorkspaceIdAndKey(workspaceId, "TRK")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> projectService.getRole(callerId, "TRK"))
+                .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
     void updateByMemberIsRejected() {
         stubWorkspace();
         when(projectRepository.findByWorkspaceIdAndKey(workspaceId, "TRK")).thenReturn(Optional.of(project));

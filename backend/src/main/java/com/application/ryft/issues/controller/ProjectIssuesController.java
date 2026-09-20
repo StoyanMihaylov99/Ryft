@@ -36,13 +36,31 @@ public class ProjectIssuesController {
         return ResponseEntity.status(HttpStatus.CREATED).body(issue);
     }
 
+    /**
+     * {@code sprintId}/{@code epicId}/{@code labelId}/{@code componentId} are mutually exclusive filters
+     * applied with that precedence, matching the existing {@code sprintId}-wins-over-{@code epicId} rule
+     * from Phase 3's first hierarchy step: passing more than one only applies the highest-precedence one
+     * present. Combining them with AND semantics would need a dynamic query (Criteria/Specification) —
+     * a pattern this codebase doesn't use anywhere else — so a simple precedence chain was kept instead,
+     * consistent with how {@code epicId} was already layered onto {@code sprintId}.
+     */
     @GetMapping
     public ResponseEntity<List<IssueResponse>> list(@AuthenticationPrincipal Jwt jwt, @PathVariable String projectKey,
-            @RequestParam(required = false) UUID sprintId) {
+            @RequestParam(required = false) UUID sprintId, @RequestParam(required = false) UUID epicId,
+            @RequestParam(required = false) UUID labelId, @RequestParam(required = false) UUID componentId) {
         UUID caller = callerId(jwt);
-        List<IssueResponse> issues = sprintId == null
-                ? issueService.listForProject(caller, projectKey)
-                : issueService.listForProject(caller, projectKey, sprintId);
+        List<IssueResponse> issues;
+        if (sprintId != null) {
+            issues = issueService.listForProject(caller, projectKey, sprintId);
+        } else if (epicId != null) {
+            issues = issueService.listForProjectByEpic(caller, projectKey, epicId);
+        } else if (labelId != null) {
+            issues = issueService.listForProjectByLabel(caller, projectKey, labelId);
+        } else if (componentId != null) {
+            issues = issueService.listForProjectByComponent(caller, projectKey, componentId);
+        } else {
+            issues = issueService.listForProject(caller, projectKey);
+        }
         return ResponseEntity.ok(issues);
     }
 

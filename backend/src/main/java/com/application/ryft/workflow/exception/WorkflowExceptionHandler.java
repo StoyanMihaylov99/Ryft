@@ -26,6 +26,26 @@ public class WorkflowExceptionHandler {
         return status(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(InsufficientProjectRoleException.class)
+    public ResponseEntity<ApiError> handleInsufficientProjectRole(InsufficientProjectRoleException ex) {
+        return status(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidWorkflowStatusReferenceException.class)
+    public ResponseEntity<ApiError> handleInvalidWorkflowStatusReference(InvalidWorkflowStatusReferenceException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(WorkflowStatusInUseException.class)
+    public ResponseEntity<ApiError> handleWorkflowStatusInUse(WorkflowStatusInUseException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(DuplicateWorkflowTransitionException.class)
+    public ResponseEntity<ApiError> handleDuplicateWorkflowTransition(DuplicateWorkflowTransitionException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     private ResponseEntity<ApiError> status(HttpStatus status, String message) {
         return ResponseEntity.status(status)
                 .body(ApiError.of(status.value(), status.getReasonPhrase(), message));

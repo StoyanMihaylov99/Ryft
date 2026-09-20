@@ -1,4 +1,4 @@
-import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -6,16 +6,32 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
-import { Issue } from '../../core/issue/models';
-import { ProjectMember } from '../../core/project/models';
+import { Issue, IssueStatus } from '../../core/issue/models';
+import { Project, ProjectRole } from '../../core/project/models';
 import { Burndown, SprintBoard as SprintBoardModel } from '../../core/sprint/models';
 import { SprintBoard } from './sprint-board';
 
-function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
-  return { userId, email: 'x@example.com', displayName: 'X', avatarUrl: null, role, addedAt: '2024-01-01T00:00:00Z' };
+const STATUS_ID_BY_CATEGORY: Record<IssueStatus, string> = {
+  TODO: 'todo',
+  BLOCKED: 'blocked',
+  IN_PROGRESS: 'inprogress',
+  DONE: 'done',
+};
+
+function project(callerRole: ProjectRole | null = null): Project {
+  return {
+    id: 'p1',
+    workspaceId: 'w1',
+    key: 'TRK',
+    name: 'Tracker',
+    description: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    archivedAt: null,
+    callerRole,
+  };
 }
 
-function issue(key: string, status: Issue['status']): Issue {
+function issue(key: string, category: IssueStatus, overrides: Partial<Issue> = {}): Issue {
   return {
     id: key,
     projectId: 'p1',
@@ -23,7 +39,10 @@ function issue(key: string, status: Issue['status']): Issue {
     type: 'TASK',
     title: `Title ${key}`,
     description: null,
-    status,
+    statusId: STATUS_ID_BY_CATEGORY[category],
+    statusName: category,
+    statusCategory: category,
+    callerCanEdit: true,
     priority: 'MEDIUM',
     storyPoints: null,
     assigneeId: null,
@@ -32,6 +51,10 @@ function issue(key: string, status: Issue['status']): Issue {
     updatedAt: null,
     resolvedAt: null,
     sprintId: 's1',
+    parentId: null,
+    labels: [],
+    components: [],
+    ...overrides,
   };
 }
 
@@ -42,7 +65,7 @@ function boardWith(...issues: Issue[]): SprintBoardModel {
     { statusId: 'done', name: 'Done', category: 'DONE', issues: [] },
   ];
   for (const value of issues) {
-    columns.find((column) => column.category === value.status)!.issues.push(value);
+    columns.find((column) => column.statusId === value.statusId)!.issues.push(value);
   }
   return { projectId: 'p1', projectKey: 'TRK', sprintId: 's1', sprintName: 'Sprint 1', columns };
 }
@@ -106,7 +129,9 @@ describe('SprintBoard', () => {
         },
         {
           provide: AuthService,
-          useValue: { currentUser: () => (currentUserId ? { id: currentUserId } : null) },
+          useValue: {
+            currentUser: () => (currentUserId ? { id: currentUserId, displayName: 'X' } : null),
+          },
         },
       ],
     }).compileComponents();
@@ -120,9 +145,9 @@ describe('SprintBoard', () => {
     httpMock.verify();
   });
 
-  function flushInitialBoard(board: SprintBoardModel, members: ProjectMember[] = []): void {
+  function flushInitialBoard(board: SprintBoardModel, callerRole: ProjectRole | null = null): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`).flush(board);
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush(members);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project(callerRole));
   }
 
   it('loads the sprint board on creation and renders its columns', () => {
@@ -132,22 +157,47 @@ describe('SprintBoard', () => {
     expect(component.loading()).toBe(false);
     expect(component.board()?.columns[0].issues).toHaveLength(1);
     expect(component.board()?.sprintName).toBe('Sprint 1');
-    expect(fixture.debugElement.query(By.css('h1')).nativeElement.textContent).toContain('Sprint 1');
+    expect(fixture.debugElement.query(By.css('h1')).nativeElement.textContent).toContain(
+      'Sprint 1',
+    );
   });
 
   it('canManageIssues is true for an Owner and false for a plain Member', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER');
     expect(component.canManageIssues()).toBe(true);
   });
 
-  it('canManageIssues stays false when the members request fails', () => {
+  it('canManageIssues stays false when the project request fails', () => {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`).flush(boardWith());
     httpMock
-      .expectOne(`${environment.apiBaseUrl}/projects/TRK/members`)
+      .expectOne(`${environment.apiBaseUrl}/projects/TRK`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
 
     expect(component.canManageIssues()).toBe(false);
+  });
+
+  it('canDragStatus is false for a Viewer', () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(), 'VIEWER');
+    expect(component.canDragStatus()).toBe(false);
+  });
+
+  it("disables every column's drop list and every card's drag when the caller is a Viewer", () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(issue('TRK-1', 'TODO')), 'VIEWER');
+    fixture.detectChanges();
+
+    const dropLists = fixture.debugElement.queryAll(By.directive(CdkDropList));
+    const drags = fixture.debugElement.queryAll(By.directive(CdkDrag));
+    expect(dropLists.length).toBeGreaterThan(0);
+    expect(drags.length).toBeGreaterThan(0);
+    for (const list of dropLists) {
+      expect(list.injector.get(CdkDropList).disabled).toBe(true);
+    }
+    for (const drag of drags) {
+      expect(drag.injector.get(CdkDrag).disabled).toBe(true);
+    }
   });
 
   it('reorders within the same column without calling the API', () => {
@@ -162,15 +212,20 @@ describe('SprintBoard', () => {
     expect(column.issues.map((i) => i.key)).toEqual(['TRK-2', 'TRK-1']);
   });
 
-  it('moving to another column calls the status endpoint', () => {
+  it('moving to another column calls the status endpoint with the target column statusId', () => {
     flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
     const board = component.board()!;
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
-    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`).flush(issue('TRK-1', 'IN_PROGRESS'));
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`);
+    expect(req.request.body).toEqual({ statusId: 'inprogress' });
+    req.flush(issue('TRK-1', 'IN_PROGRESS'));
     expect(todoColumn.issues).toHaveLength(0);
     expect(inProgressColumn.issues.map((i) => i.key)).toEqual(['TRK-1']);
   });
@@ -181,7 +236,10 @@ describe('SprintBoard', () => {
     const todoColumn = board.columns[0];
     const inProgressColumn = board.columns[1];
 
-    component.drop(dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false), inProgressColumn);
+    component.drop(
+      dropEvent(todoColumn.issues, inProgressColumn.issues, 0, 0, false),
+      inProgressColumn,
+    );
 
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
@@ -192,7 +250,7 @@ describe('SprintBoard', () => {
     expect(component.errorMessage()).toContain('TRK-1');
   });
 
-  it('moves an updated issue into its new column when the status changed via the detail panel', () => {
+  it('moves an updated issue into its new column (matched by statusId) when the status changed via the detail panel', () => {
     flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
 
     component.onIssueUpdated(issue('TRK-1', 'DONE'));
@@ -216,7 +274,7 @@ describe('SprintBoard', () => {
     httpMock
       .expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`)
       .flush({ message: 'not found' }, { status: 404, statusText: 'Not Found' });
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project());
     fixture.detectChanges();
 
     expect(component.noActiveSprint()).toBe(true);
@@ -240,11 +298,20 @@ describe('SprintBoard', () => {
     expect(fixture.debugElement.query(By.css('app-burndown-chart'))).not.toBeNull();
   });
 
+  it("resolves a card issue's linked-epic title from the issues already loaded on the sprint board", () => {
+    const epic = issue('TRK-1', 'TODO', { type: 'EPIC', title: 'Big epic' });
+    const story = issue('TRK-2', 'TODO', { type: 'STORY', parentId: 'TRK-1' });
+    flushInitialBoard(boardWith(epic, story));
+
+    expect(component.epicTitleFor(story)).toBe('Big epic');
+    expect(component.epicTitleFor(epic)).toBeNull();
+  });
+
   it('shows a generic error banner for a non-404 failure', () => {
     httpMock
       .expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project());
 
     expect(component.noActiveSprint()).toBe(false);
     expect(component.errorMessage()).toBe('Failed to load the sprint board.');

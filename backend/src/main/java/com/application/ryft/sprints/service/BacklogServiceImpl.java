@@ -30,8 +30,19 @@ public class BacklogServiceImpl implements BacklogService {
         this.sprintLookupSupport = sprintLookupSupport;
     }
 
+    /**
+     * Not read-only: transitively calls {@link IssueService#listBacklogForProject}, which — since Phase
+     * 4 gave {@code Issue} a {@code workflowStatusId} column — routes every result through
+     * {@code IssueLabelingService.toResponses}, the shared mapper that lazily backfills that column on
+     * any pre-Phase-4 row it resolves (a real write) and is therefore itself plain {@code @Transactional},
+     * not read-only. Marking this method read-only would join that write into a read-only transaction —
+     * Hibernate then sets FlushMode.MANUAL for the whole call, so the backfill is staged but never
+     * flushed, silently leaving the column null forever no matter how many times the backlog is fetched.
+     * Same trap, same fix, as {@code issues.service.BoardServiceImpl.getBoard} — see ARCHITECTURE.md's
+     * "readOnly + transitive lazy write" note.
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public List<IssueResponse> listBacklog(UUID callerId, String projectKey) {
         try {
             return issueService.listBacklogForProject(callerId, projectKey);

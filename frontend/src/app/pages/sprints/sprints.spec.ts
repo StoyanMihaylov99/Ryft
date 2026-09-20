@@ -5,18 +5,20 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
-import { ProjectMember } from '../../core/project/models';
+import { Project, ProjectRole } from '../../core/project/models';
 import { Burndown, Sprint } from '../../core/sprint/models';
 import { Sprints } from './sprints';
 
-function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
+function project(callerRole: ProjectRole | null = null): Project {
   return {
-    userId,
-    email: 'x@example.com',
-    displayName: 'X',
-    avatarUrl: null,
-    role,
-    addedAt: '2024-01-01T00:00:00Z',
+    id: 'p1',
+    workspaceId: 'w1',
+    key: 'TRK',
+    name: 'Tracker',
+    description: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    archivedAt: null,
+    callerRole,
   };
 }
 
@@ -91,9 +93,9 @@ describe('Sprints', () => {
     httpMock.verify();
   });
 
-  function flushInitial(sprints: Sprint[], members: ProjectMember[] = []): void {
+  function flushInitial(sprints: Sprint[], callerRole: ProjectRole | null = null): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush(sprints);
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush(members);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project(callerRole));
   }
 
   it('loads and renders the project sprints', () => {
@@ -110,7 +112,7 @@ describe('Sprints', () => {
     httpMock
       .expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project());
 
     expect(component.loading()).toBe(false);
     expect(component.errorMessage()).toBe('Failed to load sprints.');
@@ -118,13 +120,13 @@ describe('Sprints', () => {
 
   it('canManageSprints is true for an Owner and false for a plain Member', () => {
     currentUserId = 'u1';
-    flushInitial([], [projectMember('u1', 'OWNER')]);
+    flushInitial([], 'OWNER');
     expect(component.canManageSprints()).toBe(true);
   });
 
   it('create submits the right request body and appends the result', () => {
     currentUserId = 'u1';
-    flushInitial([], [projectMember('u1', 'OWNER')]);
+    flushInitial([], 'OWNER');
 
     component.showCreateForm.set(true);
     component.createForm.setValue({
@@ -158,7 +160,7 @@ describe('Sprints', () => {
 
   it('sends null for optional fields left blank', () => {
     currentUserId = 'u1';
-    flushInitial([], [projectMember('u1', 'OWNER')]);
+    flushInitial([], 'OWNER');
 
     component.createForm.setValue({ name: 'Sprint 2', goal: '', startDate: '', endDate: '' });
     component.submitCreate();
@@ -181,7 +183,7 @@ describe('Sprints', () => {
         sprint({ id: 's2', state: 'ACTIVE' }),
         sprint({ id: 's3', state: 'COMPLETED' }),
       ],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
     fixture.detectChanges();
 
@@ -195,7 +197,7 @@ describe('Sprints', () => {
 
   it('hides Start/Complete buttons entirely for a plain Member', () => {
     currentUserId = 'u1';
-    flushInitial([sprint({ id: 's1', state: 'PLANNED' })], [projectMember('u1', 'MEMBER')]);
+    flushInitial([sprint({ id: 's1', state: 'PLANNED' })], 'MEMBER');
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('.sprint-actions'))).toBeNull();
@@ -203,7 +205,7 @@ describe('Sprints', () => {
 
   it('start calls the start endpoint and updates the sprint state locally', () => {
     currentUserId = 'u1';
-    flushInitial([sprint({ id: 's1', state: 'PLANNED' })], [projectMember('u1', 'OWNER')]);
+    flushInitial([sprint({ id: 's1', state: 'PLANNED' })], 'OWNER');
 
     component.start(component.sprints()[0]);
 
@@ -216,7 +218,7 @@ describe('Sprints', () => {
 
   it('complete calls the complete endpoint and updates the sprint state locally', () => {
     currentUserId = 'u1';
-    flushInitial([sprint({ id: 's1', state: 'ACTIVE' })], [projectMember('u1', 'OWNER')]);
+    flushInitial([sprint({ id: 's1', state: 'ACTIVE' })], 'OWNER');
 
     component.complete(component.sprints()[0]);
 
@@ -229,7 +231,7 @@ describe('Sprints', () => {
 
   it('toggling burndown on a completed sprint loads it lazily and renders the chart once resolved', () => {
     currentUserId = 'u1';
-    flushInitial([sprint({ id: 's1', state: 'COMPLETED' })], [projectMember('u1', 'OWNER')]);
+    flushInitial([sprint({ id: 's1', state: 'COMPLETED' })], 'OWNER');
     fixture.detectChanges();
 
     expect(fixture.debugElement.query(By.css('app-burndown-chart'))).toBeNull();
@@ -247,7 +249,7 @@ describe('Sprints', () => {
     currentUserId = 'u1';
     flushInitial(
       [sprint({ id: 's1', state: 'PLANNED', name: 'Sprint 1' })],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     component.start(component.sprints()[0]);

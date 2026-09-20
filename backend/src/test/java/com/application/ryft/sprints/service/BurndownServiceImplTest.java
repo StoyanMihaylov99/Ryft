@@ -62,7 +62,7 @@ class BurndownServiceImplTest {
     private IssueResponse issue(Integer storyPoints, Instant resolvedAt) {
         return new IssueResponse(UUID.randomUUID(), projectId, "TRK-1", IssueType.TASK, "Title", null,
                 resolvedAt != null ? IssueStatus.DONE : IssueStatus.TODO, IssuePriority.MEDIUM, null, callerId, null,
-                storyPoints, Instant.now(), Instant.now(), resolvedAt);
+                storyPoints, null, List.of(), List.of(), Instant.now(), Instant.now(), resolvedAt);
     }
 
     @Test

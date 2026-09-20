@@ -25,6 +25,113 @@
     </a>
   </nav>
 
+  @if (projectKey; as key) {
+    <nav class="nav nav-project">
+      <span class="nav-section-header">{{ key }}</span>
+
+      <a
+        [routerLink]="['/projects', key, 'board']"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="5" height="16" rx="1.25" />
+          <rect x="9.5" y="4" width="5" height="10" rx="1.25" />
+          <rect x="16" y="4" width="5" height="13" rx="1.25" />
+        </svg>
+        <span>Board</span>
+      </a>
+      <a
+        [routerLink]="['/projects', key, 'sprints']"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 21V4" />
+          <path d="M5 4h13l-3 4 3 4H5" />
+        </svg>
+        <span>Sprints</span>
+      </a>
+      <a
+        [routerLink]="['/projects', key, 'backlog']"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 6h12" />
+          <path d="M8 12h12" />
+          <path d="M8 18h12" />
+          <path d="M4 6h.01" />
+          <path d="M4 12h.01" />
+          <path d="M4 18h.01" />
+        </svg>
+        <span>Backlog</span>
+      </a>
+      <a
+        [routerLink]="['/projects', key, 'sprint-board']"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="8.5" />
+          <circle cx="12" cy="12" r="4.5" />
+          <circle cx="12" cy="12" r="0.75" fill="currentColor" stroke="none" />
+        </svg>
+        <span>Scrum board</span>
+      </a>
+      <a
+        [routerLink]="['/projects', key, 'board']"
+        [queryParams]="{ panel: 'members' }"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="3.25" />
+          <path d="M5.5 20c0-3.5 2.9-6 6.5-6s6.5 2.5 6.5 6" />
+        </svg>
+        <span>Members</span>
+      </a>
+      @if (canManageWorkflow()) {
+        <a
+          [routerLink]="['/projects', key, 'board']"
+          [queryParams]="{ panel: 'workflow' }"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="exactMatch"
+          class="nav-item nav-item--sub"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="5" cy="6" r="2.25" />
+            <circle cx="12" cy="18" r="2.25" />
+            <circle cx="19" cy="6" r="2.25" />
+            <path d="M6.9 7.6 10.3 15.8" />
+            <path d="M17.1 7.6 13.7 15.8" />
+          </svg>
+          <span>Workflow</span>
+        </a>
+      }
+      @if (canManageIssues()) {
+        <a
+          [routerLink]="['/projects', key, 'board']"
+          [queryParams]="{ panel: 'labels' }"
+          routerLinkActive="active"
+          [routerLinkActiveOptions]="exactMatch"
+          class="nav-item nav-item--sub"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11.5 3.5H5a1.5 1.5 0 0 0-1.5 1.5v6.5a1.5 1.5 0 0 0 .44 1.06l8 8a1.5 1.5 0 0 0 2.12 0l6.5-6.5a1.5 1.5 0 0 0 0-2.12l-8-8a1.5 1.5 0 0 0-1.06-.44Z" />
+            <circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" />
+          </svg>
+          <span>Labels & components</span>
+        </a>
+      }
+    </nav>
+  }
+
   <div class="sidebar-footer">
     @if (currentUser(); as user) {
       <div class="user">

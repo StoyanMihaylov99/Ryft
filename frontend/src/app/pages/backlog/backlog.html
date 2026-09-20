@@ -1,16 +1,11 @@
 <div class="app-shell">
-  <app-sidebar />
+  <app-sidebar [myRole]="myRole()" />
   <div class="app-content">
     <div class="backlog-page">
       <div class="backlog-header">
         <div>
           <a routerLink="/projects" class="breadcrumb">Projects</a>
           <h1>Backlog · {{ projectKey }}</h1>
-        </div>
-        <div class="header-actions">
-          <a [routerLink]="['/projects', projectKey, 'board']" class="secondary">Board</a>
-          <a [routerLink]="['/projects', projectKey, 'sprints']" class="secondary">Sprints</a>
-          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary">Scrum board</a>
         </div>
       </div>
 
@@ -49,7 +44,7 @@
                   [cdkDragDisabled]="!canManage()"
                   (click)="openIssue(issue.key)"
                 >
-                  <app-issue-card [issue]="issue" />
+                  <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
                 </button>
               } @empty {
                 <p class="column-empty">No issues in this sprint yet.</p>
@@ -79,7 +74,7 @@
                 [cdkDragDisabled]="!canManage()"
                 (click)="openIssue(issue.key)"
               >
-                <app-issue-card [issue]="issue" />
+                <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
               </button>
             } @empty {
               <p class="column-empty">No issues in the backlog.</p>
@@ -94,7 +89,8 @@
 @if (selectedIssueKey(); as issueKey) {
   <app-issue-detail-panel
     [issueKey]="issueKey"
-    [canManage]="canManage()"
+    [projectKey]="projectKey"
+    [myRole]="myRole()"
     (closed)="closePanel()"
     (updated)="onIssueUpdated($event)"
     (deleted)="onIssueDeleted($event)"

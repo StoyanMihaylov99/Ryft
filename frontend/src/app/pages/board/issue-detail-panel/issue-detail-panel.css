@@ -49,6 +49,7 @@
 .panel-header {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.625rem;
   margin: 0 2rem 1.25rem 0;
 }
@@ -59,14 +60,31 @@
   font-size: 0.8125rem;
 }
 
-.issue-type {
+.epic-chip,
+.parent-chip,
+.subtask-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epic-chip,
+.parent-chip {
   font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--text-tertiary);
-  background: var(--bg-elevated-2);
+  font-weight: 600;
   padding: 0.1875rem 0.5rem;
   border-radius: 4px;
+  max-width: 100%;
+}
+
+.epic-chip {
+  color: var(--epic);
+  background: var(--epic-bg);
+}
+
+.parent-chip {
+  color: var(--subtask);
+  background: var(--subtask-bg);
 }
 
 .title-input {
@@ -122,7 +140,8 @@ label {
 
 select,
 textarea,
-.field-row input {
+.field-row input,
+.add-subtask input {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -136,7 +155,8 @@ textarea,
 
 select:focus,
 textarea:focus,
-.field-row input:focus {
+.field-row input:focus,
+.add-subtask input:focus {
   outline: none;
   border-color: var(--accent);
 }
@@ -148,8 +168,135 @@ textarea:disabled,
   cursor: default;
 }
 
+.epic-label,
 .description-label {
   margin-bottom: 1.25rem;
+}
+
+.chip-field {
+  margin-bottom: 1.25rem;
+}
+
+.chip-field-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.chip-field-empty {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.subtasks,
+.epic-progress {
+  margin-bottom: 1.5rem;
+}
+
+.subtasks h3,
+.comments h3,
+.epic-progress h3 {
+  margin: 0 0 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--epic-bg);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--epic);
+}
+
+.epic-progress-label {
+  margin: 0.5rem 0 0;
+}
+
+.subtasks h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.subtask-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.subtask-link {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+}
+
+.subtask-link:hover .subtask-title {
+  color: var(--accent);
+}
+
+.subtask-key {
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: var(--subtask);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.subtask-title {
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.subtask-status-label select {
+  width: auto;
+  padding: 0.3125rem 0.5rem;
+}
+
+.add-subtask {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add-subtask input {
+  flex: 1;
 }
 
 .save-row {
@@ -213,7 +360,8 @@ textarea:disabled,
   gap: 0.625rem;
 }
 
-.cancel-btn {
+.cancel-btn,
+.add-subtask-btn {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -228,15 +376,14 @@ textarea:disabled,
   border-color: var(--text-secondary);
 }
 
-.cancel-btn:hover {
+.cancel-btn:hover,
+.add-subtask-btn:hover:not(:disabled) {
   background: var(--bg-elevated-2);
 }
 
-.comments h3 {
-  margin: 0 0 0.875rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text);
+.add-subtask-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .comment {
@@ -257,7 +404,10 @@ textarea:disabled,
   color: var(--text-secondary);
 }
 
-.comment-timestamp {
+.comment-timestamp,
+.subtask-progress,
+.epic-progress-label {
+  font-size: 0.75rem;
   color: var(--text-tertiary);
 }
 

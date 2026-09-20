@@ -15,8 +15,8 @@
   color: var(--text-tertiary);
 }
 
-.issue-type-badge,
 .issue-story-points-badge {
+  align-self: flex-start;
   font-size: 0.625rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -27,8 +27,26 @@
   border-radius: 4px;
 }
 
-.issue-story-points-badge {
+.epic-chip {
   align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--epic);
+  background: var(--epic-bg);
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
 }
 
 .issue-title {

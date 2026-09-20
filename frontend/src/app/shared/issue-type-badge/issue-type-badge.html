@@ -1,0 +1,78 @@
+<span class="issue-type-badge type-{{ type().toLowerCase() }}">
+  @switch (type()) {
+    @case ('EPIC') {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+      </svg>
+    }
+    @case ('STORY') {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M6.5 3.5h8L18 7v13a1 1 0 0 1-1 1H6.5a1 1 0 0 1-1-1v-15.5a1 1 0 0 1 1-1Z" />
+        <path d="M14.5 3.5V7H18" />
+      </svg>
+    }
+    @case ('SUBTASK') {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M9 6h10M9 12h10M9 18h10" />
+        <path d="m4 6 .75.75L6.5 5" />
+        <path d="m4 12 .75.75L6.5 11" />
+        <path d="m4 18 .75.75L6.5 17" />
+      </svg>
+    }
+    @case ('BUG') {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="8" y="8.5" width="8" height="9.5" rx="4" />
+        <path
+          d="M9.3 8.3c0-1.8 1.2-3.3 2.7-3.3s2.7 1.5 2.7 3.3M4.5 12h3.5M16 12h3.5M5.5 17l3-1.5M18.5 17l-3-1.5M5.5 8l3 1.8M18.5 8l-3 1.8"
+        />
+      </svg>
+    }
+    @default {
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.75"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <rect x="4.5" y="4.5" width="15" height="15" rx="3" />
+        <path d="M8.5 12.5 10.8 14.8 15.8 9.5" />
+      </svg>
+    }
+  }
+  <span>{{ type() }}</span>
+</span>

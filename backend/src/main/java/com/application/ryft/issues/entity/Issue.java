@@ -48,11 +48,31 @@ public class Issue {
     @Setter
     private String description;
 
-    /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
+    /**
+     * Legacy Phase-1 status enum — retired from every forward code path (Phase 4 made workflows
+     * configurable, see {@link #workflowStatusId}) but kept mapped, still set to {@code TODO} on
+     * creation: the underlying {@code status} DB column is {@code NOT NULL} and, since there's no
+     * Flyway/Liquibase in this project, {@code ddl-auto: update} can't relax that constraint on an
+     * already-populated table (same class of gotcha as DATA_MODEL.md's {@code backlog_rank} note). Its
+     * only remaining reader is {@code IssueServiceImpl}'s one-time lazy backfill, which matches this
+     * enum constant's name to a {@code WorkflowStatus} category to seed {@link #workflowStatusId} for
+     * rows that predate this column.
+     */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(32)")
     @Setter
     private IssueStatus status;
+
+    /**
+     * Plain id, not a JPA relation to the workflow module's {@code WorkflowStatus} entity — same
+     * cross-module pattern as {@link #projectId}/{@link #sprintId}. Nullable so it can be added to an
+     * already-populated table under {@code ddl-auto: update}; rows created before this column existed
+     * are repaired by {@code IssueServiceImpl}'s lazy backfill the first time they're read post-deploy,
+     * not by a batch migration.
+     */
+    @Column(name = "workflow_status_id")
+    @Setter
+    private UUID workflowStatusId;
 
     /** columnDefinition avoids Hibernate's auto-generated enum CHECK constraint — see WorkflowStatus.category. */
     @Enumerated(EnumType.STRING)
@@ -81,6 +101,16 @@ public class Issue {
     @Column(name = "backlog_rank", nullable = false)
     @Setter
     private double backlogRank;
+
+    /**
+     * Plain id, not a JPA relation (same pattern as sprintId/assigneeId — avoids self-join complexity).
+     * Doubles as the epic link (STORY/TASK/BUG -&gt; EPIC) and the subtask parent link
+     * (SUBTASK -&gt; STORY/TASK/BUG); which meaning applies is derived from the issue's own type,
+     * validated in IssueServiceImpl.
+     */
+    @Column(name = "parent_issue_id")
+    @Setter
+    private UUID parentIssueId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

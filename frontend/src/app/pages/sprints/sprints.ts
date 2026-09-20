@@ -6,6 +6,7 @@ import { Observable } from 'rxjs';
 import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProjectRole } from '../../core/project/models';
+import { canManageSprints as canManageSprintsPermission } from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
 import { Burndown, Sprint } from '../../core/sprint/models';
 import { SprintService } from '../../core/sprint/sprint.service';
@@ -38,11 +39,9 @@ export class Sprints {
   readonly burndownLoading = signal(false);
   readonly burndownError = signal<string | null>(null);
 
-  /** Only Owner/Admin plan, start or complete sprints — mirrors Board's canManageIssues gate. */
+  /** Only Owner/Admin plan, start or complete sprints. */
   readonly myRole = signal<ProjectRole | null>(null);
-  readonly canManageSprints = computed(
-    () => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN',
-  );
+  readonly canManageSprints = computed(() => canManageSprintsPermission(this.myRole()));
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
   readonly createForm = this.formBuilder.nonNullable.group({
@@ -54,15 +53,12 @@ export class Sprints {
 
   constructor() {
     this.loadSprints();
-    this.loadMembers();
+    this.loadProjectRole();
   }
 
-  private loadMembers(): void {
-    this.projectService.listMembers(this.projectKey).subscribe({
-      next: (members) => {
-        const mine = members.find((member) => member.userId === this.currentUserId());
-        this.myRole.set(mine?.role ?? null);
-      },
+  private loadProjectRole(): void {
+    this.projectService.get(this.projectKey).subscribe({
+      next: (project) => this.myRole.set(project.callerRole),
       // Leave myRole null on failure — canManageSprints() then stays false, the safe default.
       error: () => {},
     });

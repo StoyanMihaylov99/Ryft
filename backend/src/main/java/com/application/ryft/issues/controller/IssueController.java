@@ -1,6 +1,7 @@
 package com.application.ryft.issues.controller;
 
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
+import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.ReorderBacklogIssueRequest;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
@@ -44,6 +45,12 @@ public class IssueController {
     public ResponseEntity<IssueResponse> updateStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable String issueKey,
             @Valid @RequestBody ChangeIssueStatusRequest request) {
         return ResponseEntity.ok(issueService.changeStatus(callerId(jwt), issueKey, request));
+    }
+
+    @GetMapping("/{issueKey}/progress")
+    public ResponseEntity<EpicProgressResponse> getEpicProgress(@AuthenticationPrincipal Jwt jwt,
+            @PathVariable String issueKey) {
+        return ResponseEntity.ok(issueService.getEpicProgress(callerId(jwt), issueKey));
     }
 
     @PatchMapping("/{issueKey}/backlog-rank")

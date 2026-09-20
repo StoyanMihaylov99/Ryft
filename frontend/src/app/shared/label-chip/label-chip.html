@@ -1,0 +1,21 @@
+@if (selectable()) {
+  <button
+    type="button"
+    class="label-chip"
+    [class.selected]="selected()"
+    [style.background]="label().color"
+    [style.color]="textColor()"
+    [attr.aria-pressed]="selected()"
+    [disabled]="disabled()"
+    (click)="toggled.emit()"
+  >
+    @if (selected()) {
+      <span class="check" aria-hidden="true">✓</span>
+    }
+    <span class="label-chip-name">{{ label().name }}</span>
+  </button>
+} @else {
+  <span class="label-chip" [style.background]="label().color" [style.color]="textColor()">
+    {{ label().name }}
+  </span>
+}

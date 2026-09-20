@@ -25,6 +25,14 @@
   --success-bg: rgb(62 207 142 / 12%);
   --warning: #f5a623;
   --warning-bg: rgb(245 166 35 / 12%);
+  /* Deliberately a different hue from --accent (blue-violet) so an Epic badge doesn't read as a
+     clickable accent element — a magenta-violet, matching Jira's epic-purple convention. */
+  --epic: #d18cff;
+  --epic-bg: rgb(209 140 255 / 12%);
+  /* A cool slate-blue, distinct from the default badge's neutral --text-tertiary/--bg-elevated-2
+     (used for TASK) so a Subtask badge doesn't read identically to a Task one. */
+  --subtask: #8fa8d1;
+  --subtask-bg: rgb(143 168 209 / 12%);
   --shadow: rgb(0 0 0 / 40%);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 35%);
@@ -59,6 +67,10 @@
   --success-bg: rgb(22 163 74 / 8%);
   --warning: #985304;
   --warning-bg: rgb(217 119 6 / 8%);
+  --epic: #7b2cb0;
+  --epic-bg: rgb(123 44 176 / 8%);
+  --subtask: #3f5f8f;
+  --subtask-bg: rgb(63 95 143 / 8%);
   --shadow: rgb(0 0 0 / 8%);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 6%);
   --shadow-md: 0 8px 24px rgb(0 0 0 / 10%);

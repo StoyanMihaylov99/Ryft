@@ -28,6 +28,7 @@ import com.application.ryft.projects.repository.ProjectRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,16 +61,15 @@ public class ProjectServiceImpl implements ProjectService {
         String description = request.description() == null ? null : request.description().trim();
         Project project = projectRepository.save(new Project(workspaceId, key, request.name().trim(), description));
         projectMemberRepository.save(new ProjectMember(project, callerId, ProjectRole.OWNER));
-        return toResponse(project);
+        return toResponse(project, ProjectRole.OWNER);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<ProjectResponse> listForCaller(UUID callerId) {
         return projectMemberRepository.findAllByUserIdOrderByAddedAtAsc(callerId).stream()
-                .map(ProjectMember::getProject)
-                .filter(project -> !project.isArchived())
-                .map(this::toResponse)
+                .filter(member -> !member.getProject().isArchived())
+                .map(member -> toResponse(member.getProject(), member.getRole()))
                 .toList();
     }
 
@@ -77,16 +77,23 @@ public class ProjectServiceImpl implements ProjectService {
     @Transactional(readOnly = true)
     public ProjectResponse get(UUID callerId, String projectKey) {
         Project project = requireProject(projectKey);
-        requireMembership(project, callerId);
-        return toResponse(project);
+        ProjectMember caller = requireMembership(project, callerId);
+        return toResponse(project, caller.getRole());
     }
 
     @Override
     @Transactional(readOnly = true)
     public ProjectResponse getById(UUID callerId, UUID projectId) {
         Project project = requireProject(projectId);
-        requireMembership(project, callerId);
-        return toResponse(project);
+        ProjectMember caller = requireMembership(project, callerId);
+        return toResponse(project, caller.getRole());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<ProjectRole> getRole(UUID callerId, String projectKey) {
+        Project project = requireProject(projectKey);
+        return projectMemberRepository.findByProjectIdAndUserId(project.getId(), callerId).map(ProjectMember::getRole);
     }
 
     @Override
@@ -102,7 +109,7 @@ public class ProjectServiceImpl implements ProjectService {
         if (request.description() != null) {
             project.setDescription(request.description().trim());
         }
-        return toResponse(project);
+        return toResponse(project, caller.getRole());
     }
 
     @Override
@@ -213,9 +220,9 @@ public class ProjectServiceImpl implements ProjectService {
         }
     }
 
-    private ProjectResponse toResponse(Project project) {
+    private ProjectResponse toResponse(Project project, ProjectRole callerRole) {
         return new ProjectResponse(project.getId(), project.getWorkspaceId(), project.getKey(), project.getName(),
-                project.getDescription(), project.getCreatedAt(), project.getArchivedAt());
+                project.getDescription(), project.getCreatedAt(), project.getArchivedAt(), callerRole);
     }
 
     private ProjectMemberResponse toMemberResponse(ProjectMember member) {

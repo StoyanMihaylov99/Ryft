@@ -72,26 +72,45 @@ class IssueProjectAccessTest {
 
     @Test
     void isOwnerOrAdminTrueForOwner() {
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(
-                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.OWNER, Instant.now())));
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.of(ProjectRole.OWNER));
 
         assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isTrue();
     }
 
     @Test
     void isOwnerOrAdminTrueForAdmin() {
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(
-                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.ADMIN, Instant.now())));
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.of(ProjectRole.ADMIN));
 
         assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isTrue();
     }
 
     @Test
     void isOwnerOrAdminFalseForPlainMember() {
-        when(projectService.listMembers(callerId, "TRK")).thenReturn(
-                List.of(new ProjectMemberResponse(callerId, "a@example.com", "A", null, ProjectRole.MEMBER, Instant.now())));
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.of(ProjectRole.MEMBER));
 
         assertThat(projectAccess.isOwnerOrAdmin(callerId, "TRK")).isFalse();
+    }
+
+    @Test
+    void isViewerTrueForViewer() {
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.of(ProjectRole.VIEWER));
+
+        assertThat(projectAccess.isViewer(callerId, "TRK")).isTrue();
+    }
+
+    @Test
+    void isViewerFalseForMember() {
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.of(ProjectRole.MEMBER));
+
+        assertThat(projectAccess.isViewer(callerId, "TRK")).isFalse();
+    }
+
+    @Test
+    void getRoleThrowsWhenCallerHasNoRole() {
+        when(projectService.getRole(callerId, "TRK")).thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> projectAccess.getRole(callerId, "TRK"))
+                .isInstanceOf(NotAProjectMemberException.class);
     }
 
     @Test

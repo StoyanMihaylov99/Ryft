@@ -36,9 +36,24 @@ public class IssueExceptionHandler {
         return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidParentLinkException.class)
+    public ResponseEntity<ApiError> handleInvalidParentLink(InvalidParentLinkException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(NotAnEpicException.class)
+    public ResponseEntity<ApiError> handleNotAnEpic(NotAnEpicException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(InsufficientProjectRoleException.class)
     public ResponseEntity<ApiError> handleInsufficientProjectRole(InsufficientProjectRoleException ex) {
         return status(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(IllegalStatusTransitionException.class)
+    public ResponseEntity<ApiError> handleIllegalStatusTransition(IllegalStatusTransitionException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(CommentNotFoundException.class)
@@ -49,6 +64,36 @@ public class IssueExceptionHandler {
     @ExceptionHandler(NotCommentAuthorException.class)
     public ResponseEntity<ApiError> handleNotCommentAuthor(NotCommentAuthorException ex) {
         return status(HttpStatus.FORBIDDEN, ex.getMessage());
+    }
+
+    @ExceptionHandler(LabelNotFoundException.class)
+    public ResponseEntity<ApiError> handleLabelNotFound(LabelNotFoundException ex) {
+        return status(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(ComponentNotFoundException.class)
+    public ResponseEntity<ApiError> handleComponentNotFound(ComponentNotFoundException ex) {
+        return status(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(LabelNameAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleLabelNameExists(LabelNameAlreadyExistsException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(ComponentNameAlreadyExistsException.class)
+    public ResponseEntity<ApiError> handleComponentNameExists(ComponentNameAlreadyExistsException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidLabelReferenceException.class)
+    public ResponseEntity<ApiError> handleInvalidLabelReference(InvalidLabelReferenceException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidComponentReferenceException.class)
+    public ResponseEntity<ApiError> handleInvalidComponentReference(InvalidComponentReferenceException ex) {
+        return status(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     private ResponseEntity<ApiError> status(HttpStatus status, String message) {
