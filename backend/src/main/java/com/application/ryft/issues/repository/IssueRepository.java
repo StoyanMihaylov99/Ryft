@@ -11,4 +11,12 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
     Optional<Issue> findByKey(String key);
 
     List<Issue> findAllByProjectIdOrderByCreatedAtAsc(UUID projectId);
+
+    Optional<Issue> findFirstByProjectIdOrderByBacklogRankDesc(UUID projectId);
+
+    List<Issue> findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(UUID projectId);
+
+    List<Issue> findAllByProjectIdAndSprintId(UUID projectId, UUID sprintId);
+
+    List<Issue> findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(UUID projectId, UUID sprintId);
 }

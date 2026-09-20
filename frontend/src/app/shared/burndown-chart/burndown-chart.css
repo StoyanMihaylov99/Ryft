@@ -1,0 +1,67 @@
+:host {
+  display: block;
+}
+
+.burndown-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.axis-line {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+.axis-label {
+  font-size: 10px;
+  fill: var(--text-tertiary);
+  font-family: inherit;
+}
+
+.ideal-line {
+  fill: none;
+  stroke: var(--text-tertiary);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
+
+.actual-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.actual-point {
+  fill: var(--accent);
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.ideal-swatch {
+  background: var(--text-tertiary);
+}
+
+.actual-swatch {
+  background: var(--accent);
+}

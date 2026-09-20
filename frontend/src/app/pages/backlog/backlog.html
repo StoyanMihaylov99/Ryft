@@ -1,0 +1,102 @@
+<div class="app-shell">
+  <app-sidebar />
+  <div class="app-content">
+    <div class="backlog-page">
+      <div class="backlog-header">
+        <div>
+          <a routerLink="/projects" class="breadcrumb">Projects</a>
+          <h1>Backlog · {{ projectKey }}</h1>
+        </div>
+        <div class="header-actions">
+          <a [routerLink]="['/projects', projectKey, 'board']" class="secondary">Board</a>
+          <a [routerLink]="['/projects', projectKey, 'sprints']" class="secondary">Sprints</a>
+          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary">Scrum board</a>
+        </div>
+      </div>
+
+      @if (errorMessage()) {
+        <div class="banner" role="alert">{{ errorMessage() }}</div>
+      }
+
+      @if (loading()) {
+        <p class="empty-state">Loading backlog…</p>
+      } @else {
+        @if (sections().length === 0) {
+          <p class="empty-state">
+            No active or planned sprints yet — every issue lives in the backlog until you plan one.
+          </p>
+        }
+
+        @for (section of sections(); track section.sprint.id) {
+          <section class="backlog-section">
+            <h2>
+              {{ section.sprint.name }} <span class="count">{{ section.issues.length }}</span>
+            </h2>
+            <div
+              cdkDropList
+              [id]="sprintListId(section.sprint.id)"
+              [cdkDropListData]="section.issues"
+              [cdkDropListConnectedTo]="listIds()"
+              [cdkDropListDisabled]="!canManage()"
+              (cdkDropListDropped)="drop($event, section.sprint.id)"
+              class="issue-list"
+            >
+              @for (issue of section.issues; track issue.id) {
+                <button
+                  type="button"
+                  class="issue-card"
+                  cdkDrag
+                  [cdkDragDisabled]="!canManage()"
+                  (click)="openIssue(issue.key)"
+                >
+                  <app-issue-card [issue]="issue" />
+                </button>
+              } @empty {
+                <p class="column-empty">No issues in this sprint yet.</p>
+              }
+            </div>
+          </section>
+        }
+
+        <section class="backlog-section">
+          <h2>
+            Backlog <span class="count">{{ backlogIssues().length }}</span>
+          </h2>
+          <div
+            cdkDropList
+            [id]="backlogListId"
+            [cdkDropListData]="backlogIssues()"
+            [cdkDropListConnectedTo]="listIds()"
+            [cdkDropListDisabled]="!canManage()"
+            (cdkDropListDropped)="drop($event, null)"
+            class="issue-list"
+          >
+            @for (issue of backlogIssues(); track issue.id) {
+              <button
+                type="button"
+                class="issue-card"
+                cdkDrag
+                [cdkDragDisabled]="!canManage()"
+                (click)="openIssue(issue.key)"
+              >
+                <app-issue-card [issue]="issue" />
+              </button>
+            } @empty {
+              <p class="column-empty">No issues in the backlog.</p>
+            }
+          </div>
+        </section>
+      }
+    </div>
+  </div>
+</div>
+
+@if (selectedIssueKey(); as issueKey) {
+  <app-issue-detail-panel
+    [issueKey]="issueKey"
+    [canManage]="canManage()"
+    (closed)="closePanel()"
+    (updated)="onIssueUpdated($event)"
+    (deleted)="onIssueDeleted($event)"
+  />
+}

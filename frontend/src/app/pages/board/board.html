@@ -8,6 +8,9 @@
           <h1>{{ projectKey }}</h1>
         </div>
         <div class="header-actions">
+          <a [routerLink]="['/projects', projectKey, 'sprints']" class="secondary">Sprints</a>
+          <a [routerLink]="['/projects', projectKey, 'backlog']" class="secondary">Backlog</a>
+          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary">Scrum board</a>
           <button type="button" class="secondary" (click)="toggleMembersPanel()">
             {{ showMembersPanel() ? 'Close' : 'Members' }}
           </button>
@@ -19,126 +22,130 @@
         </div>
       </div>
 
-  @if (errorMessage()) {
-    <div class="banner" role="alert">{{ errorMessage() }}</div>
-  }
-
-  @if (showMembersPanel()) {
-    <div class="card members-panel">
-      <h2>Members</h2>
-
-      @if (memberError()) {
-        <div class="banner" role="alert">{{ memberError() }}</div>
+      @if (errorMessage()) {
+        <div class="banner" role="alert">{{ errorMessage() }}</div>
       }
 
-      <ul class="member-list">
-        @for (member of members(); track member.userId) {
-          <li class="member-row">
-            <div class="member-identity">
-              <span class="member-name">{{ member.displayName }}</span>
-              <span class="member-email">{{ member.email }}</span>
-            </div>
-            @if (isOwner() && member.userId !== currentUserId() && member.role !== 'OWNER') {
-              <select
-                class="role-select"
-                [value]="member.role"
-                (change)="changeMemberRole(member.userId, $any($event.target).value)"
-              >
-                <option value="ADMIN">Admin</option>
-                <option value="MEMBER">Member</option>
-                <option value="VIEWER">Viewer</option>
-              </select>
-              <button type="button" class="remove-btn" (click)="removeMember(member.userId)">Remove</button>
-            } @else {
-              <span class="member-role">{{ member.role }}</span>
-            }
-          </li>
-        }
-      </ul>
+      @if (showMembersPanel()) {
+        <div class="card members-panel">
+          <h2>Members</h2>
 
-      @if (canAddMembers()) {
-        <form class="invite-form" [formGroup]="inviteForm" (ngSubmit)="submitInvite()">
-          <label class="email-field">
-            Email
-            <input type="email" formControlName="email" placeholder="teammate@example.com" autocomplete="off" />
-          </label>
-          <label>
-            Role
-            <select formControlName="role">
-              <option value="ADMIN">Admin</option>
-              <option value="MEMBER">Member</option>
-              <option value="VIEWER">Viewer</option>
-            </select>
-          </label>
-          <button type="submit" class="submit" [disabled]="inviting()">
-            {{ inviting() ? 'Adding…' : 'Add member' }}
-          </button>
-        </form>
-      }
-    </div>
-  }
+          @if (memberError()) {
+            <div class="banner" role="alert">{{ memberError() }}</div>
+          }
 
-  @if (showCreateForm() && canManageIssues()) {
-    <div class="card create-card">
-      <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
-        <label>
-          Type
-          <select formControlName="type">
-            <option value="TASK">Task</option>
-            <option value="STORY">Story</option>
-            <option value="BUG">Bug</option>
-          </select>
-        </label>
-        <label class="title-field">
-          Title
-          <input type="text" formControlName="title" autocomplete="off" />
-        </label>
-        <button type="submit" class="submit" [disabled]="creating()">
-          {{ creating() ? 'Creating…' : 'Create' }}
-        </button>
-      </form>
-    </div>
-  }
-
-  @if (loading()) {
-    <p class="empty-state">Loading board…</p>
-  } @else if (board(); as boardValue) {
-    <div class="board">
-      @for (column of boardValue.columns; track column.statusId) {
-        <div class="column">
-          <h2>
-            {{ column.name }} <span class="count">{{ column.issues.length }}</span>
-          </h2>
-          <div
-            cdkDropList
-            [id]="columnListId(column)"
-            [cdkDropListData]="column.issues"
-            [cdkDropListConnectedTo]="listIds()"
-            (cdkDropListDropped)="drop($event, column)"
-            class="issue-list"
-          >
-            @for (issue of column.issues; track issue.id) {
-              <button type="button" class="issue-card" cdkDrag (click)="openIssue(issue.key)">
-                <span class="issue-card-header">
-                  <span class="issue-key">{{ issue.key }}</span>
-                  <span class="issue-type-badge">{{ issue.type }}</span>
-                </span>
-                <p class="issue-title">{{ issue.title }}</p>
-                <span class="issue-priority priority-{{ issue.priority.toLowerCase() }}">{{ issue.priority }}</span>
-              </button>
-            } @empty {
-              <p class="column-empty">
-                No issues yet.
-                @if (column.category === 'TODO' && canManageIssues()) {
-                  <button type="button" class="empty-cta" (click)="toggleCreateForm()">Create the first issue</button>
+          <ul class="member-list">
+            @for (member of members(); track member.userId) {
+              <li class="member-row">
+                <div class="member-identity">
+                  <span class="member-name">{{ member.displayName }}</span>
+                  <span class="member-email">{{ member.email }}</span>
+                </div>
+                @if (isOwner() && member.userId !== currentUserId() && member.role !== 'OWNER') {
+                  <select
+                    class="role-select"
+                    [value]="member.role"
+                    (change)="changeMemberRole(member.userId, $any($event.target).value)"
+                  >
+                    <option value="ADMIN">Admin</option>
+                    <option value="MEMBER">Member</option>
+                    <option value="VIEWER">Viewer</option>
+                  </select>
+                  <button type="button" class="remove-btn" (click)="removeMember(member.userId)">
+                    Remove
+                  </button>
+                } @else {
+                  <span class="member-role">{{ member.role }}</span>
                 }
-              </p>
+              </li>
             }
-          </div>
+          </ul>
+
+          @if (canAddMembers()) {
+            <form class="invite-form" [formGroup]="inviteForm" (ngSubmit)="submitInvite()">
+              <label class="email-field">
+                Email
+                <input
+                  type="email"
+                  formControlName="email"
+                  placeholder="teammate@example.com"
+                  autocomplete="off"
+                />
+              </label>
+              <label>
+                Role
+                <select formControlName="role">
+                  <option value="ADMIN">Admin</option>
+                  <option value="MEMBER">Member</option>
+                  <option value="VIEWER">Viewer</option>
+                </select>
+              </label>
+              <button type="submit" class="submit" [disabled]="inviting()">
+                {{ inviting() ? 'Adding…' : 'Add member' }}
+              </button>
+            </form>
+          }
         </div>
       }
-    </div>
-  }
+
+      @if (showCreateForm() && canManageIssues()) {
+        <div class="card create-card">
+          <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
+            <label>
+              Type
+              <select formControlName="type">
+                <option value="TASK">Task</option>
+                <option value="STORY">Story</option>
+                <option value="BUG">Bug</option>
+              </select>
+            </label>
+            <label class="title-field">
+              Title
+              <input type="text" formControlName="title" autocomplete="off" />
+            </label>
+            <button type="submit" class="submit" [disabled]="creating()">
+              {{ creating() ? 'Creating…' : 'Create' }}
+            </button>
+          </form>
+        </div>
+      }
+
+      @if (loading()) {
+        <p class="empty-state">Loading board…</p>
+      } @else if (board(); as boardValue) {
+        <div class="board">
+          @for (column of boardValue.columns; track column.statusId) {
+            <div class="column">
+              <h2>
+                {{ column.name }} <span class="count">{{ column.issues.length }}</span>
+              </h2>
+              <div
+                cdkDropList
+                [id]="columnListId(column)"
+                [cdkDropListData]="column.issues"
+                [cdkDropListConnectedTo]="listIds()"
+                (cdkDropListDropped)="drop($event, column)"
+                class="issue-list"
+              >
+                @for (issue of column.issues; track issue.id) {
+                  <button type="button" class="issue-card" cdkDrag (click)="openIssue(issue.key)">
+                    <app-issue-card [issue]="issue" />
+                  </button>
+                } @empty {
+                  <p class="column-empty">
+                    No issues yet.
+                    @if (column.category === 'TODO' && canManageIssues()) {
+                      <button type="button" class="empty-cta" (click)="toggleCreateForm()">
+                        Create the first issue
+                      </button>
+                    }
+                  </p>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
     </div>
   </div>
 </div>

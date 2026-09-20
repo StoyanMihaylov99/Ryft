@@ -39,10 +39,11 @@ export class IssueDetailPanel {
   readonly confirmingDeleteIssue = signal(false);
   readonly confirmingDeleteCommentId = signal<string | null>(null);
 
-  /** Staged edits for title/status/priority/description — not sent until save() is called. */
+  /** Staged edits for title/status/priority/storyPoints/description — not sent until save() is called. */
   readonly draftTitle = signal('');
   readonly draftDescription = signal('');
   readonly draftPriority = signal<IssuePriority>('MEDIUM');
+  readonly draftStoryPoints = signal<number | null>(null);
   readonly draftStatus = signal<IssueStatus>('TODO');
   readonly saving = signal(false);
 
@@ -87,6 +88,7 @@ export class IssueDetailPanel {
     this.draftTitle.set(issue.title);
     this.draftDescription.set(issue.description ?? '');
     this.draftPriority.set(issue.priority);
+    this.draftStoryPoints.set(issue.storyPoints);
     this.draftStatus.set(issue.status);
   }
 
@@ -109,6 +111,13 @@ export class IssueDetailPanel {
       return;
     }
     this.draftPriority.set(priority);
+  }
+
+  updateDraftStoryPoints(storyPoints: number | null): void {
+    if (!this.canManage()) {
+      return;
+    }
+    this.draftStoryPoints.set(storyPoints);
   }
 
   updateDraftStatus(status: IssueStatus): void {
@@ -191,6 +200,9 @@ export class IssueDetailPanel {
     }
     if (this.draftPriority() !== issue.priority) {
       request.priority = this.draftPriority();
+    }
+    if (this.draftStoryPoints() !== issue.storyPoints) {
+      request.storyPoints = this.draftStoryPoints();
     }
     return Object.keys(request).length > 0 ? request : null;
   }
