@@ -16,13 +16,13 @@ import com.application.ryft.issues.dto.BoardResponse;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
-import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
 import com.application.ryft.projects.entity.ProjectRole;
 import com.application.ryft.projects.repository.ProjectMemberRepository;
 import com.application.ryft.projects.repository.ProjectRepository;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
 import com.application.ryft.workflow.entity.StatusCategory;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -89,6 +89,16 @@ class BoardControllerIT extends AbstractIntegrationTest {
         return project;
     }
 
+    private UUID statusIdOf(String projectKey, String token, StatusCategory category) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectKey}/workflow", projectKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        WorkflowSchemeResponse scheme = objectMapper.readValue(result.getResponse().getContentAsString(),
+                WorkflowSchemeResponse.class);
+        return scheme.statuses().stream().filter(s -> s.category() == category).findFirst().orElseThrow().id();
+    }
+
     @Test
     void boardGroupsIssuesByColumnAndReflectsStatusChanges() throws Exception {
         String email = uniqueEmail();
@@ -116,10 +126,11 @@ class BoardControllerIT extends AbstractIntegrationTest {
         assertThat(board.columns().get(1).category()).isEqualTo(StatusCategory.BLOCKED);
         assertThat(board.columns().get(3).issues()).isEmpty();
 
+        UUID doneStatusId = statusIdOf(key, token, StatusCategory.DONE);
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
                 .andExpect(status().isOk());
 
         MvcResult movedBoardResult = mockMvc.perform(get("/api/v1/projects/{projectKey}/board", key)

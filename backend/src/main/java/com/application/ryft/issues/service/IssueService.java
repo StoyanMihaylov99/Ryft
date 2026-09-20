@@ -89,4 +89,14 @@ public interface IssueService {
      * resolve to an EPIC.
      */
     EpicProgressResponse getEpicProgress(UUID callerId, String epicKey);
+
+    /**
+     * Whether any issue in the given project still references the given workflow status — backs
+     * {@code WorkflowServiceImpl}'s status-deletion guard (a {@code WorkflowStatus} can't be deleted
+     * while an {@code Issue} points at it). Deliberately takes raw ids, not a project key/caller: this is
+     * an internal cross-module check called by {@code workflow}, not a caller-facing endpoint, so it
+     * skips the usual membership gate — the caller-facing gate already happened on
+     * {@code WorkflowServiceImpl.updateScheme}'s own entry point.
+     */
+    boolean existsAnyWithWorkflowStatusId(UUID projectId, UUID workflowStatusId);
 }

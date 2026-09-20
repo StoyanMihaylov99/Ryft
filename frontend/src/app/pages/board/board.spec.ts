@@ -1,15 +1,24 @@
-import { CdkDragDrop } from '@angular/cdk/drag-drop';
+import { CdkDrag, CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Board as BoardModel } from '../../core/board/models';
-import { Issue, Label, ProjectComponent } from '../../core/issue/models';
-import { ProjectMember } from '../../core/project/models';
+import { Issue, IssueStatus, Label, ProjectComponent } from '../../core/issue/models';
+import { Project, ProjectMember, ProjectRole } from '../../core/project/models';
+import { WorkflowScheme } from '../../core/workflow/models';
 import { Board } from './board';
+
+const STATUS_ID_BY_CATEGORY: Record<IssueStatus, string> = {
+  TODO: 'todo',
+  BLOCKED: 'blocked',
+  IN_PROGRESS: 'inprogress',
+  DONE: 'done',
+};
 
 function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
   return {
@@ -22,7 +31,20 @@ function projectMember(userId: string, role: ProjectMember['role']): ProjectMemb
   };
 }
 
-function issue(key: string, status: Issue['status'], overrides: Partial<Issue> = {}): Issue {
+function project(callerRole: ProjectRole | null = null): Project {
+  return {
+    id: 'p1',
+    workspaceId: 'w1',
+    key: 'TRK',
+    name: 'Tracker',
+    description: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    archivedAt: null,
+    callerRole,
+  };
+}
+
+function issue(key: string, category: IssueStatus, overrides: Partial<Issue> = {}): Issue {
   return {
     id: key,
     projectId: 'p1',
@@ -30,7 +52,10 @@ function issue(key: string, status: Issue['status'], overrides: Partial<Issue> =
     type: 'TASK',
     title: `Title ${key}`,
     description: null,
-    status,
+    statusId: STATUS_ID_BY_CATEGORY[category],
+    statusName: category,
+    statusCategory: category,
+    callerCanEdit: true,
     priority: 'MEDIUM',
     storyPoints: null,
     assigneeId: null,
@@ -53,9 +78,27 @@ function boardWith(...issues: Issue[]): BoardModel {
     { statusId: 'done', name: 'Done', category: 'DONE', issues: [] },
   ];
   for (const value of issues) {
-    columns.find((column) => column.category === value.status)!.issues.push(value);
+    columns.find((column) => column.statusId === value.statusId)!.issues.push(value);
   }
   return { projectId: 'p1', projectKey: 'TRK', columns };
+}
+
+function workflowScheme(overrides: Partial<WorkflowScheme> = {}): WorkflowScheme {
+  return {
+    id: 'scheme-1',
+    projectId: 'p1',
+    name: 'Default',
+    statuses: [
+      { id: 'todo', name: 'To Do', category: 'TODO', sortOrder: 0 },
+      { id: 'inprogress', name: 'In Progress', category: 'IN_PROGRESS', sortOrder: 1 },
+      { id: 'done', name: 'Done', category: 'DONE', sortOrder: 2 },
+    ],
+    transitions: [
+      { id: 't1', fromStatusId: 'todo', toStatusId: 'inprogress', toStatusName: 'In Progress', fromStatusName: 'To Do', name: null },
+      { id: 't2', fromStatusId: 'inprogress', toStatusId: 'done', toStatusName: 'Done', fromStatusName: 'In Progress', name: null },
+    ],
+    ...overrides,
+  };
 }
 
 function dropEvent(
@@ -85,10 +128,13 @@ describe('Board', () => {
   let fixture: ComponentFixture<Board>;
   let component: Board;
   let httpMock: HttpTestingController;
+  let router: Router;
+  let queryParamMap$: BehaviorSubject<ParamMap>;
   let currentUserId: string | null;
 
   beforeEach(async () => {
     currentUserId = null;
+    queryParamMap$ = new BehaviorSubject(convertToParamMap({}));
     await TestBed.configureTestingModule({
       imports: [Board],
       providers: [
@@ -97,7 +143,13 @@ describe('Board', () => {
         provideRouter([]),
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { paramMap: convertToParamMap({ projectKey: 'TRK' }) } },
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap({ projectKey: 'TRK' }),
+              queryParamMap: convertToParamMap({}),
+            },
+            queryParamMap: queryParamMap$,
+          },
         },
         {
           provide: AuthService,
@@ -109,6 +161,17 @@ describe('Board', () => {
     }).compileComponents();
 
     httpMock = TestBed.inject(HttpTestingController);
+    router = TestBed.inject(Router);
+    // A working fake rather than a bare spy: `setPanel` navigates relative to a hand-rolled
+    // ActivatedRoute mock (not a real route-tree entry), which the real Router can't resolve — so
+    // this mimics the one effect that matters here, updating the same `queryParamMap$` the
+    // component's `panelParam` is subscribed to, exactly as a real same-route navigation would.
+    vi.spyOn(router, 'navigate').mockImplementation((_commands, extras) => {
+      const panel = (extras?.queryParams?.['panel'] as string | null) ?? null;
+      queryParamMap$.next(convertToParamMap(panel ? { panel } : {}));
+      TestBed.tick();
+      return Promise.resolve(true);
+    });
     fixture = TestBed.createComponent(Board);
     component = fixture.componentInstance;
   });
@@ -119,11 +182,13 @@ describe('Board', () => {
 
   function flushInitialBoard(
     board: BoardModel,
+    callerRole: ProjectRole | null = null,
     members: ProjectMember[] = [],
     labels: Label[] = [],
     components: ProjectComponent[] = [],
   ): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(board);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project(callerRole));
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush(members);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`).flush(labels);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`).flush(components);
@@ -138,30 +203,31 @@ describe('Board', () => {
 
   it('canManageIssues is true for an Owner', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER');
 
     expect(component.canManageIssues()).toBe(true);
   });
 
   it('canManageIssues is true for an Admin', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'ADMIN')]);
+    flushInitialBoard(boardWith(), 'ADMIN');
 
     expect(component.canManageIssues()).toBe(true);
   });
 
   it('canManageIssues is false for a plain Member', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'MEMBER')]);
+    flushInitialBoard(boardWith(), 'MEMBER');
 
     expect(component.canManageIssues()).toBe(false);
   });
 
-  it('canManageIssues stays false when the members request fails', () => {
+  it('canManageIssues stays false when the project request fails', () => {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(boardWith());
     httpMock
-      .expectOne(`${environment.apiBaseUrl}/projects/TRK/members`)
+      .expectOne(`${environment.apiBaseUrl}/projects/TRK`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush([]);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/labels`).flush([]);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/components`).flush([]);
 
@@ -171,7 +237,7 @@ describe('Board', () => {
   it('isOwner is true only for an Owner, and members() reflects the loaded list', () => {
     currentUserId = 'u1';
     const roster = [projectMember('u1', 'OWNER'), projectMember('u2', 'MEMBER')];
-    flushInitialBoard(boardWith(), roster);
+    flushInitialBoard(boardWith(), 'OWNER', roster);
 
     expect(component.isOwner()).toBe(true);
     expect(component.canAddMembers()).toBe(true);
@@ -180,15 +246,47 @@ describe('Board', () => {
 
   it('isOwner is false for an Admin, though they can still add members', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'ADMIN')]);
+    flushInitialBoard(boardWith(), 'ADMIN', [projectMember('u1', 'ADMIN')]);
 
     expect(component.isOwner()).toBe(false);
     expect(component.canAddMembers()).toBe(true);
   });
 
+  it('canDragStatus is false for a Viewer and true for every other role', () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(), 'VIEWER');
+    expect(component.canDragStatus()).toBe(false);
+  });
+
+  it("disables every column's drop list and every card's drag when the caller is a Viewer", () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(issue('TRK-1', 'TODO')), 'VIEWER');
+    fixture.detectChanges();
+
+    const dropLists = fixture.debugElement.queryAll(By.directive(CdkDropList));
+    const drags = fixture.debugElement.queryAll(By.directive(CdkDrag));
+    expect(dropLists.length).toBeGreaterThan(0);
+    expect(drags.length).toBeGreaterThan(0);
+    for (const list of dropLists) {
+      expect(list.injector.get(CdkDropList).disabled).toBe(true);
+    }
+    for (const drag of drags) {
+      expect(drag.injector.get(CdkDrag).disabled).toBe(true);
+    }
+  });
+
+  it('leaves drag enabled for a Member', () => {
+    currentUserId = 'u1';
+    flushInitialBoard(boardWith(issue('TRK-1', 'TODO')), 'MEMBER');
+    fixture.detectChanges();
+
+    const dropList = fixture.debugElement.query(By.directive(CdkDropList));
+    expect(dropList.injector.get(CdkDropList).disabled).toBe(false);
+  });
+
   it('submitInvite adds the returned member to the list on success', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER', [projectMember('u1', 'OWNER')]);
 
     component.inviteForm.setValue({ email: 'new@example.com', role: 'MEMBER' });
     component.submitInvite();
@@ -204,7 +302,7 @@ describe('Board', () => {
 
   it('submitInvite reports a friendly message when the target user does not exist', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER', [projectMember('u1', 'OWNER')]);
 
     component.inviteForm.setValue({ email: 'ghost@example.com', role: 'MEMBER' });
     component.submitInvite();
@@ -218,7 +316,7 @@ describe('Board', () => {
 
   it('submitInvite reports a friendly message when the user is already a member', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER', [projectMember('u1', 'OWNER')]);
 
     component.inviteForm.setValue({ email: 'u2@example.com', role: 'MEMBER' });
     component.submitInvite();
@@ -232,7 +330,10 @@ describe('Board', () => {
 
   it('changeMemberRole updates optimistically and reverts on failure', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER'), projectMember('u2', 'MEMBER')]);
+    flushInitialBoard(boardWith(), 'OWNER', [
+      projectMember('u1', 'OWNER'),
+      projectMember('u2', 'MEMBER'),
+    ]);
 
     component.changeMemberRole('u2', 'ADMIN');
     expect(component.members().find((m) => m.userId === 'u2')?.role).toBe('ADMIN');
@@ -247,7 +348,10 @@ describe('Board', () => {
 
   it('removeMember removes optimistically and restores the list on failure', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER'), projectMember('u2', 'MEMBER')]);
+    flushInitialBoard(boardWith(), 'OWNER', [
+      projectMember('u1', 'OWNER'),
+      projectMember('u2', 'MEMBER'),
+    ]);
 
     component.removeMember('u2');
     expect(component.members().map((m) => m.userId)).toEqual(['u1']);
@@ -272,7 +376,7 @@ describe('Board', () => {
     expect(column.issues.map((i) => i.key)).toEqual(['TRK-2', 'TRK-1']);
   });
 
-  it('moving to another column calls the status endpoint', () => {
+  it('moving to another column calls the status endpoint with the target column statusId', () => {
     flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
     const board = component.board()!;
     const todoColumn = board.columns[0];
@@ -283,9 +387,9 @@ describe('Board', () => {
       inProgressColumn,
     );
 
-    httpMock
-      .expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`)
-      .flush(issue('TRK-1', 'IN_PROGRESS'));
+    const req = httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-1/status`);
+    expect(req.request.body).toEqual({ statusId: 'inprogress' });
+    req.flush(issue('TRK-1', 'IN_PROGRESS'));
     expect(todoColumn.issues).toHaveLength(0);
     expect(inProgressColumn.issues.map((i) => i.key)).toEqual(['TRK-1']);
   });
@@ -326,7 +430,7 @@ describe('Board', () => {
 
   it('shows Epic as a selectable type, alongside Story/Task/Bug', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER');
     component.showCreateForm.set(true);
     fixture.detectChanges();
 
@@ -342,7 +446,7 @@ describe('Board', () => {
 
   it('shows the Epic select for a Story/Task/Bug and hides it once the type is switched to Epic', () => {
     currentUserId = 'u1';
-    flushInitialBoard(boardWith(), [projectMember('u1', 'OWNER')]);
+    flushInitialBoard(boardWith(), 'OWNER');
     component.showCreateForm.set(true);
     fixture.detectChanges();
 
@@ -396,7 +500,7 @@ describe('Board', () => {
     expect(component.epicTitleFor(epic)).toBeNull();
   });
 
-  it('moves an updated issue into its new column when the status changed via the detail panel', () => {
+  it('moves an updated issue into its new column (matched by statusId) when the status changed via the detail panel', () => {
     flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
 
     component.onIssueUpdated(issue('TRK-1', 'DONE'));
@@ -469,7 +573,7 @@ describe('Board', () => {
     });
 
     it('resets the label filter when the filtered label is deleted', () => {
-      flushInitialBoard(boardWith(), [], [label()]);
+      flushInitialBoard(boardWith(), null, [], [label()]);
 
       component.setLabelFilter('l1');
       expect(component.labelFilter()).toBe('l1');
@@ -481,7 +585,7 @@ describe('Board', () => {
     });
 
     it('isFiltering reflects whether either filter is active', () => {
-      flushInitialBoard(boardWith(), [], [label()], [projectComponent()]);
+      flushInitialBoard(boardWith(), null, [], [label()], [projectComponent()]);
 
       expect(component.isFiltering()).toBe(false);
 
@@ -498,7 +602,7 @@ describe('Board', () => {
 
     it('disables dragging on every card while a filter is active, to avoid CDK measuring hidden cards’ collapsed rects', () => {
       const withLabel = issue('TRK-1', 'TODO', { labels: [label()] });
-      flushInitialBoard(boardWith(withLabel), [], [label()]);
+      flushInitialBoard(boardWith(withLabel), 'MEMBER', [], [label()]);
       fixture.detectChanges();
       const card = () => fixture.debugElement.query(By.css('.issue-card'));
 
@@ -513,7 +617,7 @@ describe('Board', () => {
 
   describe('attaching labels/components on create', () => {
     it('sends the toggled labelIds/componentIds when creating an issue', () => {
-      flushInitialBoard(boardWith(), [], [label()], [projectComponent()]);
+      flushInitialBoard(boardWith(), null, [], [label()], [projectComponent()]);
 
       component.createForm.setValue({ type: 'TASK', title: 'New task', parentId: null });
       component.toggleCreateLabel('l1');
@@ -531,7 +635,7 @@ describe('Board', () => {
     });
 
     it('omits labelIds/componentIds when none are toggled', () => {
-      flushInitialBoard(boardWith(), [], [label()]);
+      flushInitialBoard(boardWith(), null, [], [label()]);
 
       component.createForm.setValue({ type: 'TASK', title: 'New task', parentId: null });
       component.submitCreate();
@@ -542,7 +646,7 @@ describe('Board', () => {
     });
 
     it('resets the staged label/component selection when the create form is toggled closed', () => {
-      flushInitialBoard(boardWith(), [], [label()]);
+      flushInitialBoard(boardWith(), null, [], [label()]);
 
       component.toggleCreateLabel('l1');
       expect(component.isCreateLabelSelected('l1')).toBe(true);
@@ -570,7 +674,7 @@ describe('Board', () => {
     });
 
     it('removes a label optimistically and restores it on failure', () => {
-      flushInitialBoard(boardWith(), [], [label()]);
+      flushInitialBoard(boardWith(), null, [], [label()]);
 
       component.deleteLabel('l1');
       expect(component.labels()).toEqual([]);
@@ -584,7 +688,7 @@ describe('Board', () => {
     });
 
     it('restores the label filter if deleting the currently-filtered label fails', () => {
-      flushInitialBoard(boardWith(), [], [label()]);
+      flushInitialBoard(boardWith(), null, [], [label()]);
       component.setLabelFilter('l1');
 
       component.deleteLabel('l1');
@@ -613,7 +717,7 @@ describe('Board', () => {
     });
 
     it('removes a component optimistically and restores it on failure', () => {
-      flushInitialBoard(boardWith(), [], [], [projectComponent()]);
+      flushInitialBoard(boardWith(), null, [], [], [projectComponent()]);
 
       component.deleteComponent('c1');
       expect(component.components()).toEqual([]);
@@ -627,7 +731,7 @@ describe('Board', () => {
     });
 
     it('restores the component filter if deleting the currently-filtered component fails', () => {
-      flushInitialBoard(boardWith(), [], [], [projectComponent()]);
+      flushInitialBoard(boardWith(), null, [], [], [projectComponent()]);
       component.setComponentFilter('c1');
 
       component.deleteComponent('c1');
@@ -639,6 +743,324 @@ describe('Board', () => {
 
       expect(component.components()).toEqual([projectComponent()]);
       expect(component.componentFilter()).toBe('c1');
+    });
+  });
+
+  describe('panel opened via the ?panel= query param', () => {
+    it('opens the Members panel reactively when the URL query param changes, without a page reload', () => {
+      flushInitialBoard(boardWith());
+      expect(component.showMembersPanel()).toBe(false);
+
+      queryParamMap$.next(convertToParamMap({ panel: 'members' }));
+      TestBed.tick();
+
+      expect(component.showMembersPanel()).toBe(true);
+    });
+
+    it('opens the Workflow panel and lazily loads the scheme when the URL already has ?panel=workflow on cold load', async () => {
+      currentUserId = 'u1';
+      const initialQueryParamMap = convertToParamMap({ panel: 'workflow' });
+      const coldLoadQueryParamMap$ = new BehaviorSubject(initialQueryParamMap);
+      await TestBed.resetTestingModule().configureTestingModule({
+        imports: [Board],
+        providers: [
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          provideRouter([]),
+          {
+            provide: ActivatedRoute,
+            useValue: {
+              snapshot: {
+                paramMap: convertToParamMap({ projectKey: 'TRK' }),
+                queryParamMap: initialQueryParamMap,
+              },
+              queryParamMap: coldLoadQueryParamMap$,
+            },
+          },
+          {
+            provide: AuthService,
+            useValue: { currentUser: () => ({ id: 'u1', displayName: 'X' }) },
+          },
+        ],
+      }).compileComponents();
+      httpMock = TestBed.inject(HttpTestingController);
+      fixture = TestBed.createComponent(Board);
+      component = fixture.componentInstance;
+
+      // canManageWorkflow() is false until the project request resolves — the effect must rerun
+      // once myRole arrives rather than only evaluating the panel param once at construction time.
+      flushInitialBoard(boardWith(), 'OWNER');
+      TestBed.tick();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      expect(component.showWorkflowPanel()).toBe(true);
+      expect(component.workflowScheme()?.statuses).toHaveLength(3);
+    });
+
+    it('does not open the Workflow panel for a plain Member, even if the URL requests ?panel=workflow', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'MEMBER');
+      TestBed.tick();
+
+      queryParamMap$.next(convertToParamMap({ panel: 'workflow' }));
+      TestBed.tick();
+
+      expect(component.showWorkflowPanel()).toBe(false);
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+    });
+
+    it('does not open the Labels panel for a plain Member, even if the URL requests ?panel=labels', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'MEMBER');
+      TestBed.tick();
+
+      queryParamMap$.next(convertToParamMap({ panel: 'labels' }));
+      TestBed.tick();
+
+      expect(component.showLabelsPanel()).toBe(false);
+    });
+
+    it('hides the board grid and filters while a panel is open, and restores them once it closes', () => {
+      flushInitialBoard(boardWith(), 'OWNER', [], [
+        { id: 'l1', projectId: 'p1', name: 'Bug', color: '#ff0000' },
+      ]);
+      fixture.detectChanges();
+
+      expect(fixture.debugElement.query(By.css('.board'))).toBeTruthy();
+      expect(fixture.debugElement.query(By.css('.board-filters'))).toBeTruthy();
+
+      queryParamMap$.next(convertToParamMap({ panel: 'members' }));
+      TestBed.tick();
+      fixture.detectChanges();
+
+      expect(fixture.debugElement.query(By.css('.board'))).toBeFalsy();
+      expect(fixture.debugElement.query(By.css('.board-filters'))).toBeFalsy();
+      expect(fixture.debugElement.query(By.css('.members-panel'))).toBeTruthy();
+
+      queryParamMap$.next(convertToParamMap({}));
+      TestBed.tick();
+      fixture.detectChanges();
+
+      expect(fixture.debugElement.query(By.css('.board'))).toBeTruthy();
+      expect(fixture.debugElement.query(By.css('.board-filters'))).toBeTruthy();
+    });
+  });
+
+  describe('panel toggles navigate instead of mutating state directly', () => {
+    it('toggleMembersPanel navigates to ?panel=members when the panel is closed', () => {
+      flushInitialBoard(boardWith());
+
+      component.toggleMembersPanel();
+
+      expect(router.navigate).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { panel: 'members' }, replaceUrl: true }),
+      );
+    });
+
+    it('toggleMembersPanel navigates to clear the panel query param when already open', () => {
+      flushInitialBoard(boardWith());
+      queryParamMap$.next(convertToParamMap({ panel: 'members' }));
+      TestBed.tick();
+
+      component.toggleMembersPanel();
+
+      expect(router.navigate).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { panel: null }, replaceUrl: true }),
+      );
+    });
+
+    it('toggleLabelsPanel navigates to ?panel=labels when the panel is closed', () => {
+      flushInitialBoard(boardWith());
+
+      component.toggleLabelsPanel();
+
+      expect(router.navigate).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { panel: 'labels' }, replaceUrl: true }),
+      );
+    });
+  });
+
+  describe('workflow admin panel', () => {
+    it('canManageWorkflow is true for an Owner and false for a plain Member', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'MEMBER');
+      expect(component.canManageWorkflow()).toBe(false);
+    });
+
+    it('loads the scheme only the first time the panel is opened', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      expect(component.canManageWorkflow()).toBe(true);
+
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+      expect(component.workflowScheme()?.statuses).toHaveLength(3);
+
+      component.toggleWorkflowPanel();
+      component.toggleWorkflowPanel();
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+    });
+
+    it('renames a status by sending the full status list in one PATCH, leaving transitions untouched', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      component.renameWorkflowStatus('todo', 'Backlog');
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.body.statuses).toEqual([
+        { id: 'todo', name: 'Backlog', category: 'TODO', sortOrder: 0 },
+        { id: 'inprogress', name: 'In Progress', category: 'IN_PROGRESS', sortOrder: 1 },
+        { id: 'done', name: 'Done', category: 'DONE', sortOrder: 2 },
+      ]);
+      expect(req.request.body.transitions).toHaveLength(2);
+      req.flush(workflowScheme({ statuses: [{ id: 'todo', name: 'Backlog', category: 'TODO', sortOrder: 0 }] }));
+
+      expect(component.workflowScheme()?.statuses[0].name).toBe('Backlog');
+    });
+
+    it('adds a new status via one PATCH and clears the input on success', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      component.newStatusName.set('Review');
+      component.newStatusCategory.set('IN_PROGRESS');
+      component.submitNewWorkflowStatus();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.body.statuses).toContainEqual({
+        id: null,
+        name: 'Review',
+        category: 'IN_PROGRESS',
+        sortOrder: 3,
+      });
+      req.flush(workflowScheme());
+
+      expect(component.newStatusName()).toBe('');
+    });
+
+    it('excludes transitions that reference the removed status from the PATCH body', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      // 'todo' is referenced by transition t1 (todo -> inprogress) but not by t2
+      // (inprogress -> done); only t1 should be dropped from the submitted body.
+      component.removeWorkflowStatus('todo');
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.body.statuses).toEqual([
+        { id: 'inprogress', name: 'In Progress', category: 'IN_PROGRESS', sortOrder: 1 },
+        { id: 'done', name: 'Done', category: 'DONE', sortOrder: 2 },
+      ]);
+      expect(req.request.body.transitions).toEqual([
+        { id: 't2', fromStatusId: 'inprogress', toStatusId: 'done', name: null },
+      ]);
+
+      req.flush(
+        workflowScheme({
+          statuses: [
+            { id: 'inprogress', name: 'In Progress', category: 'IN_PROGRESS', sortOrder: 0 },
+            { id: 'done', name: 'Done', category: 'DONE', sortOrder: 1 },
+          ],
+          transitions: [
+            {
+              id: 't2',
+              fromStatusId: 'inprogress',
+              toStatusId: 'done',
+              toStatusName: 'Done',
+              fromStatusName: 'In Progress',
+              name: null,
+            },
+          ],
+        }),
+      );
+
+      expect(component.workflowScheme()?.statuses).toHaveLength(2);
+    });
+
+    it('surfaces a 409 as an in-use message when deleting a status with no transitions fails', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      // 'archived' has no transitions referencing it, so the client-side filtering in
+      // submitStatusEdits is a no-op here and the request genuinely reaches the backend's
+      // "status in use by an existing Issue" 409 case rather than being masked by the
+      // 400 that would occur if a removed status's own transitions were still submitted.
+      const scheme = workflowScheme({
+        statuses: [
+          { id: 'todo', name: 'To Do', category: 'TODO', sortOrder: 0 },
+          { id: 'inprogress', name: 'In Progress', category: 'IN_PROGRESS', sortOrder: 1 },
+          { id: 'done', name: 'Done', category: 'DONE', sortOrder: 2 },
+          { id: 'archived', name: 'Archived', category: 'DONE', sortOrder: 3 },
+        ],
+      });
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(scheme);
+
+      component.removeWorkflowStatus('archived');
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.body.transitions).toEqual(scheme.transitions.map((t) => ({
+        id: t.id,
+        fromStatusId: t.fromStatusId,
+        toStatusId: t.toStatusId,
+        name: t.name,
+      })));
+      req.flush({ message: 'in use' }, { status: 409, statusText: 'Conflict' });
+
+      expect(component.workflowError()).toContain('in use');
+    });
+
+    it('toggling a transition checkbox does not call the API — only saveTransitions does, as one batched PATCH', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      expect(component.isTransitionChecked('done', 'todo')).toBe(false);
+      component.toggleDraftTransition('done', 'todo');
+      expect(component.isTransitionChecked('done', 'todo')).toBe(true);
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+
+      component.saveTransitions();
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.body.transitions).toContainEqual({
+        id: null,
+        fromStatusId: 'done',
+        toStatusId: 'todo',
+        name: null,
+      });
+      req.flush(workflowScheme());
+    });
+
+    it("preserves an existing transition's id/name when re-saving an unchanged transition", () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'OWNER');
+      component.toggleWorkflowPanel();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+
+      // Toggle an unrelated transition on and back off so transitionsDirty flips true, then save —
+      // the untouched existing transitions must still round-trip with their original id/name.
+      component.toggleDraftTransition('done', 'todo');
+      component.saveTransitions();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      expect(req.request.body.transitions).toContainEqual({
+        id: 't1',
+        fromStatusId: 'todo',
+        toStatusId: 'inprogress',
+        name: null,
+      });
     });
   });
 });

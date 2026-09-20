@@ -8,6 +8,7 @@ import com.application.ryft.issues.dto.UpdateCommentRequest;
 import com.application.ryft.issues.entity.Comment;
 import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.exception.CommentNotFoundException;
+import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotCommentAuthorException;
 import com.application.ryft.issues.repository.CommentRepository;
@@ -41,7 +42,9 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public CommentResponse create(UUID callerId, String issueKey, CreateCommentRequest request) {
         Issue issue = requireIssue(issueKey);
-        projectAccess.requireMembership(callerId, projectKeyOf(issue));
+        String projectKey = projectKeyOf(issue);
+        projectAccess.requireMembership(callerId, projectKey);
+        requireNotViewer(callerId, projectKey);
 
         // flush so @CreationTimestamp (VM-generated at flush time) is populated before we read it back below
         Comment comment = commentRepository.saveAndFlush(new Comment(issue, callerId, request.body().trim()));
@@ -65,7 +68,9 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public CommentResponse update(UUID callerId, UUID commentId, UpdateCommentRequest request) {
         Comment comment = requireComment(commentId);
-        projectAccess.requireMembership(callerId, projectKeyOf(comment.getIssue()));
+        String projectKey = projectKeyOf(comment.getIssue());
+        projectAccess.requireMembership(callerId, projectKey);
+        requireNotViewer(callerId, projectKey);
         requireAuthor(callerId, comment);
 
         comment.editBody(request.body().trim());
@@ -76,7 +81,9 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public void delete(UUID callerId, UUID commentId) {
         Comment comment = requireComment(commentId);
-        projectAccess.requireMembership(callerId, projectKeyOf(comment.getIssue()));
+        String projectKey = projectKeyOf(comment.getIssue());
+        projectAccess.requireMembership(callerId, projectKey);
+        requireNotViewer(callerId, projectKey);
         requireAuthor(callerId, comment);
 
         commentRepository.delete(comment);
@@ -95,6 +102,13 @@ public class CommentServiceImpl implements CommentService {
     private void requireAuthor(UUID callerId, Comment comment) {
         if (!comment.getAuthorId().equals(callerId)) {
             throw new NotCommentAuthorException();
+        }
+    }
+
+    /** Viewer is fully read-only: no commenting, not even editing/deleting a comment they posted before being downgraded. */
+    private void requireNotViewer(UUID callerId, String projectKey) {
+        if (projectAccess.isViewer(callerId, projectKey)) {
+            throw new InsufficientProjectRoleException();
         }
     }
 

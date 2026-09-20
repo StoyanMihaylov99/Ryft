@@ -23,7 +23,6 @@ import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.dto.ReorderBacklogIssueRequest;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.IssuePriority;
-import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
@@ -33,6 +32,9 @@ import com.application.ryft.projects.repository.ProjectRepository;
 import com.application.ryft.sprints.dto.CreateSprintRequest;
 import com.application.ryft.sprints.dto.MoveIssueToSprintRequest;
 import com.application.ryft.sprints.dto.SprintResponse;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
+import com.application.ryft.workflow.entity.StatusCategory;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -102,6 +104,21 @@ class IssueControllerIT extends AbstractIntegrationTest {
         projectMemberRepository.save(new ProjectMember(project, user.getId(), role));
     }
 
+    /** Resolves a real {@code WorkflowStatus} id by category — {@code ChangeIssueStatusRequest} takes a real status id, not the old fixed enum. */
+    private UUID statusIdOf(String projectKey, String token, StatusCategory category) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectKey}/workflow", projectKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        WorkflowSchemeResponse scheme = objectMapper.readValue(result.getResponse().getContentAsString(),
+                WorkflowSchemeResponse.class);
+        return scheme.statuses().stream()
+                .filter(s -> s.category() == category)
+                .findFirst()
+                .orElseThrow()
+                .id();
+    }
+
     @Test
     void createIssueGeneratesSequentialKeys() throws Exception {
         String email = uniqueEmail();
@@ -118,7 +135,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andReturn();
         IssueResponse firstIssue = objectMapper.readValue(first.getResponse().getContentAsString(), IssueResponse.class);
         assertThat(firstIssue.key()).isEqualTo(key + "-1");
-        assertThat(firstIssue.status()).isEqualTo(IssueStatus.TODO);
+        assertThat(firstIssue.statusCategory()).isEqualTo(StatusCategory.TODO);
         assertThat(firstIssue.priority()).isEqualTo(IssuePriority.MEDIUM);
 
         MvcResult second = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
@@ -150,8 +167,9 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    /** Loosened from Owner/Admin-only: any role except Viewer may create an issue. */
     @Test
-    void createIssueByPlainMemberReturns403() throws Exception {
+    void createIssueByPlainMemberSucceeds() throws Exception {
         String ownerEmail = uniqueEmail();
         registerAndGetToken(ownerEmail);
         String key = uniqueKey();
@@ -163,6 +181,25 @@ class IssueControllerIT extends AbstractIntegrationTest {
 
         mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void createIssueByViewerReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String viewerEmail = uniqueEmail();
+        String viewerToken = registerAndGetToken(viewerEmail);
+        addMembership(project, userOf(viewerEmail), ProjectRole.VIEWER);
+
+        mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
@@ -598,7 +635,7 @@ class IssueControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void updateByPlainMemberReturns403() throws Exception {
+    void updateByUninvolvedMemberReturns403() throws Exception {
         String ownerEmail = uniqueEmail();
         String ownerToken = registerAndGetToken(ownerEmail);
         String key = uniqueKey();
@@ -624,6 +661,37 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    /** A Member may edit an issue they're involved with (assignee or reporter) even without Owner/Admin. */
+    @Test
+    void updateByInvolvedMemberSucceeds() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        User member = userOf(memberEmail);
+        addMembership(project, member, ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, member.getId(), null,
+                                        null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateIssueRequest("Updated by assignee", null,
+                                null, null, null, null, null, null))))
+                .andExpect(status().isOk());
+    }
+
     @Test
     void updateStatusToDoneSetsResolvedAt() throws Exception {
         String email = uniqueEmail();
@@ -639,15 +707,17 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+        UUID doneStatusId = statusIdOf(key, token, StatusCategory.DONE);
 
         MvcResult updated = mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
                 .andExpect(status().isOk())
                 .andReturn();
         IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
-        assertThat(result.status()).isEqualTo(IssueStatus.DONE);
+        assertThat(result.statusId()).isEqualTo(doneStatusId);
+        assertThat(result.statusCategory()).isEqualTo(StatusCategory.DONE);
         assertThat(result.resolvedAt()).isNotNull();
     }
 
@@ -670,12 +740,13 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+        UUID inProgressStatusId = statusIdOf(key, ownerToken, StatusCategory.IN_PROGRESS);
 
         // Unlike create/update/delete, a plain Member is allowed to drag a card (change its status).
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.IN_PROGRESS))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(inProgressStatusId))))
                 .andExpect(status().isOk());
     }
 
@@ -694,14 +765,95 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+        UUID doneStatusId = statusIdOf(key, ownerToken, StatusCategory.DONE);
 
         String outsiderToken = registerAndGetToken(uniqueEmail());
 
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + outsiderToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void updateStatusByViewerReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String viewerEmail = uniqueEmail();
+        String viewerToken = registerAndGetToken(viewerEmail);
+        addMembership(project, userOf(viewerEmail), ProjectRole.VIEWER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+        UUID doneStatusId = statusIdOf(key, ownerToken, StatusCategory.DONE);
+
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
+                .andExpect(status().isForbidden());
+    }
+
+    /** The default scheme is any-to-any until narrowed — narrow it via {@code PATCH .../workflow} to exercise the 409 path. */
+    @Test
+    void updateStatusWithIllegalTransitionReturns409() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.BUG, "Title", null, null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        MvcResult schemeResult = mockMvc.perform(get("/api/v1/projects/{projectKey}/workflow", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        WorkflowSchemeResponse scheme = objectMapper.readValue(schemeResult.getResponse().getContentAsString(),
+                WorkflowSchemeResponse.class);
+        UUID todoStatusId = scheme.statuses().stream().filter(s -> s.category() == StatusCategory.TODO).findFirst()
+                .orElseThrow().id();
+        UUID blockedStatusId = scheme.statuses().stream().filter(s -> s.category() == StatusCategory.BLOCKED)
+                .findFirst().orElseThrow().id();
+        List<com.application.ryft.workflow.dto.WorkflowStatusEdit> statusEdits = scheme.statuses().stream()
+                .map(s -> new com.application.ryft.workflow.dto.WorkflowStatusEdit(s.id(), s.name(), s.category(),
+                        s.sortOrder()))
+                .toList();
+        // Narrow the graph to only To Do -> Blocked, so To Do -> Done becomes illegal.
+        List<com.application.ryft.workflow.dto.WorkflowTransitionEdit> transitionEdits = List.of(
+                new com.application.ryft.workflow.dto.WorkflowTransitionEdit(null, todoStatusId, blockedStatusId,
+                        "To Do to Blocked"));
+        mockMvc.perform(patch("/api/v1/projects/{projectKey}/workflow", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new com.application.ryft.workflow.dto.UpdateWorkflowSchemeRequest(statusEdits,
+                                        transitionEdits))))
+                .andExpect(status().isOk());
+
+        UUID doneStatusId = scheme.statuses().stream().filter(s -> s.category() == StatusCategory.DONE).findFirst()
+                .orElseThrow().id();
+        mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -720,6 +872,34 @@ class IssueControllerIT extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null, null, null, null))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
+
+        mockMvc.perform(delete("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken))
+                .andExpect(status().isForbidden());
+    }
+
+    /** Delete stays Owner/Admin-only even for a Member who is the issue's assignee — unlike update. */
+    @Test
+    void deleteByInvolvedMemberReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        User member = userOf(memberEmail);
+        addMembership(project, member, ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/projects/{projectKey}/issues", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new CreateIssueRequest(IssueType.TASK, "Title", null, null, member.getId(), null,
+                                        null, null, null))))
                 .andExpect(status().isCreated())
                 .andReturn();
         IssueResponse issue = objectMapper.readValue(created.getResponse().getContentAsString(), IssueResponse.class);
@@ -796,11 +976,12 @@ class IssueControllerIT extends AbstractIntegrationTest {
         createIssueOfType(key, token, IssueType.TASK, "Not done task", epic.id());
         createIssueOfType(key, token, IssueType.BUG, "Not done bug", epic.id());
         createIssueOfType(key, token, IssueType.STORY, "Unrelated story", null);
+        UUID doneStatusId = statusIdOf(key, token, StatusCategory.DONE);
 
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", done.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
                 .andExpect(status().isOk());
 
         MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", epic.key())
@@ -872,10 +1053,11 @@ class IssueControllerIT extends AbstractIntegrationTest {
                 .andReturn();
         IssueResponse subtask = objectMapper.readValue(subtaskResult.getResponse().getContentAsString(),
                 IssueResponse.class);
+        UUID doneStatusId = statusIdOf(key, token, StatusCategory.DONE);
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", subtask.key())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(IssueStatus.DONE))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(doneStatusId))))
                 .andExpect(status().isOk());
 
         MvcResult result = mockMvc.perform(get("/api/v1/issues/{issueKey}/progress", epic.key())

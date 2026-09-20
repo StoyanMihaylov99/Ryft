@@ -10,6 +10,7 @@ import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
 import { BoardColumn } from '../../core/board/models';
 import { ProjectRole } from '../../core/project/models';
+import { canChangeStatus, canManageIssues as canManageIssuesPermission } from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
 import { Burndown, SprintBoard as SprintBoardModel } from '../../core/sprint/models';
 import { SprintService } from '../../core/sprint/sprint.service';
@@ -49,7 +50,9 @@ export class SprintBoard {
   /** Only Owner/Admin create, edit or delete issues — everyone else just comments and drags cards,
    *  mirrors Board's canManageIssues gate. */
   readonly myRole = signal<ProjectRole | null>(null);
-  readonly canManageIssues = computed(() => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN');
+  readonly canManageIssues = computed(() => canManageIssuesPermission(this.myRole()));
+  /** A Viewer is fully read-only — no drag-and-drop status changes. */
+  readonly canDragStatus = computed(() => canChangeStatus(this.myRole()));
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
   readonly listIds = computed(() =>
@@ -66,16 +69,13 @@ export class SprintBoard {
 
   constructor() {
     this.loadBoard();
-    this.loadMembers();
+    this.loadProjectRole();
   }
 
-  private loadMembers(): void {
-    this.projectService.listMembers(this.projectKey).subscribe({
-      next: (members) => {
-        const mine = members.find((member) => member.userId === this.currentUserId());
-        this.myRole.set(mine?.role ?? null);
-      },
-      // Leave myRole null on failure — canManageIssues() then stays false, the safe default.
+  private loadProjectRole(): void {
+    this.projectService.get(this.projectKey).subscribe({
+      next: (project) => this.myRole.set(project.callerRole),
+      // Leave myRole null on failure — canManageIssues()/canDragStatus() then stay false, the safe default.
       error: () => {},
     });
   }
@@ -148,7 +148,7 @@ export class SprintBoard {
       event.currentIndex,
     );
 
-    this.issueService.changeStatus(issue.key, targetColumn.category).subscribe({
+    this.issueService.changeStatus(issue.key, targetColumn.statusId).subscribe({
       error: () => {
         transferArrayItem(
           event.container.data,
@@ -179,13 +179,11 @@ export class SprintBoard {
       if (index === -1) {
         continue;
       }
-      if (column.category === updated.status) {
+      if (column.statusId === updated.statusId) {
         column.issues[index] = updated;
       } else {
         column.issues.splice(index, 1);
-        board.columns
-          .find((candidate) => candidate.category === updated.status)
-          ?.issues.push(updated);
+        board.columns.find((candidate) => candidate.statusId === updated.statusId)?.issues.push(updated);
       }
       break;
     }

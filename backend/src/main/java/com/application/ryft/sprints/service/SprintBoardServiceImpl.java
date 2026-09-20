@@ -13,11 +13,12 @@ import com.application.ryft.sprints.exception.ProjectNotFoundException;
 import com.application.ryft.sprints.repository.SprintRepository;
 import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
 import com.application.ryft.workflow.dto.WorkflowStatusResponse;
-import com.application.ryft.workflow.entity.StatusCategory;
 import com.application.ryft.workflow.service.WorkflowService;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,11 +56,13 @@ public class SprintBoardServiceImpl implements SprintBoardService {
                 .orElseThrow(NoActiveSprintException::new);
         WorkflowSchemeResponse scheme = requireWorkflowScheme(callerId, projectKey);
         List<IssueResponse> issues = issueService.listForSprint(callerId, projectKey, sprint.getId());
+        Map<UUID, List<IssueResponse>> issuesByStatusId = issues.stream()
+                .collect(Collectors.groupingBy(IssueResponse::statusId));
 
         List<BoardColumnResponse> columns = scheme.statuses().stream()
                 .sorted(Comparator.comparingInt(WorkflowStatusResponse::sortOrder))
                 .map(status -> new BoardColumnResponse(status.id(), status.name(), status.category(),
-                        issuesInCategory(issues, status.category())))
+                        issuesByStatusId.getOrDefault(status.id(), List.of())))
                 .toList();
 
         return new SprintBoardResponse(project.id(), project.key(), sprint.getId(), sprint.getName(), columns);
@@ -79,17 +82,5 @@ public class SprintBoardServiceImpl implements SprintBoardService {
         } catch (com.application.ryft.workflow.exception.NotAProjectMemberException e) {
             throw new NotAProjectMemberException();
         }
-    }
-
-    /**
-     * {@code Issue.status} (the issues module's fixed enum) and {@code WorkflowStatus.category} (the
-     * workflow module's enum) are deliberately modeled with identical constant names for the fixed
-     * Phase 1 scheme — matching by name is what bridges them without either module depending on the
-     * other's entity. Mirrors {@code issues.service.BoardServiceImpl.issuesInCategory} exactly.
-     */
-    private List<IssueResponse> issuesInCategory(List<IssueResponse> issues, StatusCategory category) {
-        return issues.stream()
-                .filter(issue -> issue.status().name().equals(category.name()))
-                .toList();
     }
 }

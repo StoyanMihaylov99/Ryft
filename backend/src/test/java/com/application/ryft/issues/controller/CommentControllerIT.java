@@ -300,4 +300,88 @@ class CommentControllerIT extends AbstractIntegrationTest {
                         .content(objectMapper.writeValueAsString(new UpdateCommentRequest("Edited"))))
                 .andExpect(status().isNotFound());
     }
+
+    /** Viewer is fully read-only: no commenting at all. */
+    @Test
+    void createCommentByViewerReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+        String issueKey = createIssue(key, ownerToken);
+
+        String viewerEmail = uniqueEmail();
+        String viewerToken = registerAndGetToken(viewerEmail);
+        addMembership(project, userOf(viewerEmail), ProjectRole.VIEWER);
+
+        mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("Sneaking in"))))
+                .andExpect(status().isForbidden());
+    }
+
+    /**
+     * A Viewer is blocked even from editing a comment they posted before being downgraded to Viewer —
+     * they get a clear "insufficient role" 403, not "not the author".
+     */
+    @Test
+    void updateCommentByDowngradedViewerReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+        String issueKey = createIssue(key, ownerToken);
+
+        String memberEmail = uniqueEmail();
+        String memberToken = registerAndGetToken(memberEmail);
+        User member = userOf(memberEmail);
+        addMembership(project, member, ProjectRole.MEMBER);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("Before downgrade"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        CommentResponse comment = objectMapper.readValue(created.getResponse().getContentAsString(), CommentResponse.class);
+
+        mockMvc.perform(patch("/api/v1/projects/{projectKey}/members/{userId}", key, member.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(
+                                new com.application.ryft.projects.dto.ChangeProjectMemberRoleRequest(ProjectRole.VIEWER))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/v1/comments/{commentId}", comment.id())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateCommentRequest("Still trying"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void deleteCommentByViewerReturns403() throws Exception {
+        String ownerEmail = uniqueEmail();
+        String ownerToken = registerAndGetToken(ownerEmail);
+        String key = uniqueKey();
+        Project project = createProject(key, userOf(ownerEmail));
+        String issueKey = createIssue(key, ownerToken);
+
+        MvcResult created = mockMvc.perform(post("/api/v1/issues/{issueKey}/comments", issueKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new CreateCommentRequest("Original"))))
+                .andExpect(status().isCreated())
+                .andReturn();
+        CommentResponse comment = objectMapper.readValue(created.getResponse().getContentAsString(), CommentResponse.class);
+
+        String viewerEmail = uniqueEmail();
+        String viewerToken = registerAndGetToken(viewerEmail);
+        addMembership(project, userOf(viewerEmail), ProjectRole.VIEWER);
+
+        mockMvc.perform(delete("/api/v1/comments/{commentId}", comment.id())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + viewerToken))
+                .andExpect(status().isForbidden());
+    }
 }

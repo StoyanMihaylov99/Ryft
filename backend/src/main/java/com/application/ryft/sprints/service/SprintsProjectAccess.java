@@ -52,8 +52,8 @@ class SprintsProjectAccess {
 
     /** Owner/Admin manage sprints (create/edit); every other role only views them. */
     boolean isOwnerOrAdmin(UUID callerId, String projectKey) {
-        return projectService.listMembers(callerId, projectKey).stream()
-                .filter(member -> member.userId().equals(callerId))
-                .anyMatch(member -> member.role() == ProjectRole.OWNER || member.role() == ProjectRole.ADMIN);
+        return projectService.getRole(callerId, projectKey)
+                .map(role -> role == ProjectRole.OWNER || role == ProjectRole.ADMIN)
+                .orElse(false);
     }
 }

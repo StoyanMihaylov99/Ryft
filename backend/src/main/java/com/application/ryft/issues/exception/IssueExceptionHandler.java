@@ -51,6 +51,11 @@ public class IssueExceptionHandler {
         return status(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(IllegalStatusTransitionException.class)
+    public ResponseEntity<ApiError> handleIllegalStatusTransition(IllegalStatusTransitionException ex) {
+        return status(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(CommentNotFoundException.class)
     public ResponseEntity<ApiError> handleCommentNotFound(CommentNotFoundException ex) {
         return status(HttpStatus.NOT_FOUND, ex.getMessage());

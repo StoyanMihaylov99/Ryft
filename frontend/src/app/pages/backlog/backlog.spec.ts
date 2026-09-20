@@ -7,18 +7,20 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Issue } from '../../core/issue/models';
-import { ProjectMember } from '../../core/project/models';
+import { Project, ProjectRole } from '../../core/project/models';
 import { Sprint } from '../../core/sprint/models';
 import { Backlog } from './backlog';
 
-function projectMember(userId: string, role: ProjectMember['role']): ProjectMember {
+function project(callerRole: ProjectRole | null = null): Project {
   return {
-    userId,
-    email: 'x@example.com',
-    displayName: 'X',
-    avatarUrl: null,
-    role,
-    addedAt: '2024-01-01T00:00:00Z',
+    id: 'p1',
+    workspaceId: 'w1',
+    key: 'TRK',
+    name: 'Tracker',
+    description: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    archivedAt: null,
+    callerRole,
   };
 }
 
@@ -46,7 +48,10 @@ function issue(key: string, overrides: Partial<Issue> = {}): Issue {
     type: 'TASK',
     title: `Title ${key}`,
     description: null,
-    status: 'TODO',
+    statusId: 'todo',
+    statusName: 'To Do',
+    statusCategory: 'TODO',
+    callerCanEdit: true,
     priority: 'MEDIUM',
     storyPoints: null,
     assigneeId: null,
@@ -125,10 +130,10 @@ describe('Backlog', () => {
     sprints: Sprint[],
     sprintIssues: Record<string, Issue[]>,
     backlogIssues: Issue[],
-    members: ProjectMember[] = [],
+    callerRole: ProjectRole | null = null,
   ): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush(sprints);
-    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/members`).flush(members);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project(callerRole));
     for (const s of sprints) {
       if (s.state === 'PLANNED' || s.state === 'ACTIVE') {
         httpMock
@@ -172,7 +177,7 @@ describe('Backlog', () => {
 
   it('canManage is true for an Owner and false for a plain Member', () => {
     currentUserId = 'u1';
-    flushInitial([], {}, [], [projectMember('u1', 'OWNER')]);
+    flushInitial([], {}, [], 'OWNER');
     expect(component.canManage()).toBe(true);
   });
 
@@ -181,7 +186,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [] },
       [issue('TRK-1')],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     const section = component.sections()[0];
@@ -206,7 +211,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [issue('TRK-1', { sprintId: 's1' })] },
       [],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     const section = component.sections()[0];
@@ -233,7 +238,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [issue('TRK-1', { sprintId: 's1' })] },
       [b, c],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     const section = component.sections()[0];
@@ -264,7 +269,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [issue('TRK-1', { sprintId: 's1' })] },
       [b, c],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     const section = component.sections()[0];
@@ -290,7 +295,7 @@ describe('Backlog', () => {
     const a = issue('TRK-1');
     const b = issue('TRK-2');
     const c = issue('TRK-3');
-    flushInitial([], {}, [a, b, c], [projectMember('u1', 'OWNER')]);
+    flushInitial([], {}, [a, b, c], 'OWNER');
 
     const backlog = component.backlogIssues();
     // Move TRK-1 (index 0) to index 1, landing between TRK-2 and TRK-3.
@@ -305,7 +310,7 @@ describe('Backlog', () => {
   it('reverts the backlog reorder when the API call fails', () => {
     const a = issue('TRK-1');
     const b = issue('TRK-2');
-    flushInitial([], {}, [a, b], [projectMember('u1', 'OWNER')]);
+    flushInitial([], {}, [a, b], 'OWNER');
 
     const backlog = component.backlogIssues();
     component.drop(dropEvent(backlog, backlog, 0, 1, true), null);
@@ -325,7 +330,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [a, b] },
       [],
-      [projectMember('u1', 'OWNER')],
+      'OWNER',
     );
 
     const section = component.sections()[0];
@@ -350,7 +355,7 @@ describe('Backlog', () => {
       [sprint({ id: 's1', state: 'ACTIVE' })],
       { s1: [issue('TRK-1', { sprintId: 's1' })] },
       [issue('TRK-2')],
-      [projectMember('u1', 'MEMBER')],
+      'MEMBER',
     );
     fixture.detectChanges();
 

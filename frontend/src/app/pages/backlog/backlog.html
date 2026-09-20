@@ -1,18 +1,11 @@
 <div class="app-shell">
-  <app-sidebar />
+  <app-sidebar [myRole]="myRole()" />
   <div class="app-content">
     <div class="backlog-page">
       <div class="backlog-header">
         <div>
           <a routerLink="/projects" class="breadcrumb">Projects</a>
           <h1>Backlog · {{ projectKey }}</h1>
-        </div>
-        <div class="header-actions">
-          <a [routerLink]="['/projects', projectKey, 'board']" class="secondary">Board</a>
-          <a [routerLink]="['/projects', projectKey, 'sprints']" class="secondary">Sprints</a>
-          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary"
-            >Scrum board</a
-          >
         </div>
       </div>
 
@@ -97,7 +90,7 @@
   <app-issue-detail-panel
     [issueKey]="issueKey"
     [projectKey]="projectKey"
-    [canManage]="canManage()"
+    [myRole]="myRole()"
     (closed)="closePanel()"
     (updated)="onIssueUpdated($event)"
     (deleted)="onIssueDeleted($event)"

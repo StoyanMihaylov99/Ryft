@@ -1,5 +1,5 @@
 <div class="app-shell">
-  <app-sidebar />
+  <app-sidebar [myRole]="myRole()" />
   <div class="app-content">
     <div class="sprints-page">
       <div class="sprints-header">
@@ -8,9 +8,6 @@
           <h1>Sprints · {{ projectKey }}</h1>
         </div>
         <div class="header-actions">
-          <a [routerLink]="['/projects', projectKey, 'board']" class="secondary">Board</a>
-          <a [routerLink]="['/projects', projectKey, 'backlog']" class="secondary">Backlog</a>
-          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary">Scrum board</a>
           @if (canManageSprints()) {
             <button type="button" class="submit" (click)="toggleCreateForm()">
               {{ showCreateForm() ? 'Cancel' : '+ New sprint' }}

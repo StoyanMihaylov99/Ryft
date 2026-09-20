@@ -30,7 +30,14 @@ export interface Issue {
   type: IssueType;
   title: string;
   description: string | null;
-  status: IssueStatus;
+  /** `statusId` is the source of truth (a real `WorkflowStatus` row in the project's configurable
+   *  scheme); `statusName`/`statusCategory` are denormalized alongside it so a card/column can
+   *  render a label or group by category without a second lookup. `statusCategory` is the fixed
+   *  4-value category union (`IssueStatus`) — unaffected by workflow configuration, unlike
+   *  `statusId`/`statusName`. */
+  statusId: string;
+  statusName: string;
+  statusCategory: IssueStatus;
   priority: IssuePriority;
   storyPoints: number | null;
   assigneeId: string | null;
@@ -45,6 +52,10 @@ export interface Issue {
   createdAt: string;
   updatedAt: string | null;
   resolvedAt: string | null;
+  /** Owner/Admin, or Member-and-involved (assignee or reporter) — the one permission that can't be
+   *  derived from `ProjectResponse.callerRole` alone. UX-only, like `callerRole`: the actual trust
+   *  boundary is server-side enforcement on the write endpoints. */
+  callerCanEdit: boolean;
 }
 
 export interface CreateIssueRequest {

@@ -15,7 +15,6 @@ import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
-import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
@@ -29,6 +28,8 @@ import com.application.ryft.sprints.dto.UpdateSprintRequest;
 import com.application.ryft.sprints.entity.Sprint;
 import com.application.ryft.sprints.entity.SprintState;
 import com.application.ryft.sprints.repository.SprintRepository;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
+import com.application.ryft.workflow.entity.StatusCategory;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -131,12 +132,24 @@ class SprintControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    private void changeIssueStatus(String issueKey, IssueStatus newStatus, String token) throws Exception {
+    private void changeIssueStatus(String projectKey, String issueKey, StatusCategory newCategory, String token)
+            throws Exception {
+        UUID statusId = statusIdOf(projectKey, token, newCategory);
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issueKey)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(newStatus))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(statusId))))
                 .andExpect(status().isOk());
+    }
+
+    private UUID statusIdOf(String projectKey, String token, StatusCategory category) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectKey}/workflow", projectKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        WorkflowSchemeResponse scheme = objectMapper.readValue(result.getResponse().getContentAsString(),
+                WorkflowSchemeResponse.class);
+        return scheme.statuses().stream().filter(s -> s.category() == category).findFirst().orElseThrow().id();
     }
 
     @Test
@@ -244,7 +257,7 @@ class SprintControllerIT extends AbstractIntegrationTest {
         assertThat(issuesInSprint).extracting(IssueResponse::key)
                 .containsExactlyInAnyOrder(unfinishedIssue.key(), doneIssue.key());
 
-        changeIssueStatus(doneIssue.key(), IssueStatus.DONE, token);
+        changeIssueStatus(key, doneIssue.key(), StatusCategory.DONE, token);
 
         MvcResult completed = mockMvc.perform(post("/api/v1/sprints/{sprintId}/complete", sprint.id())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))

@@ -10,6 +10,7 @@ import { forkJoin } from 'rxjs';
 import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProjectRole } from '../../core/project/models';
+import { canManageSprints } from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
 import { Sprint } from '../../core/sprint/models';
 import { SprintService } from '../../core/sprint/sprint.service';
@@ -43,9 +44,9 @@ export class Backlog {
   readonly errorMessage = signal<string | null>(null);
   readonly selectedIssueKey = signal<string | null>(null);
 
-  /** Only Owner/Admin drag issues between the backlog and a sprint — mirrors Board's canManageIssues gate. */
+  /** Only Owner/Admin drag issues between the backlog and a sprint. */
   readonly myRole = signal<ProjectRole | null>(null);
-  readonly canManage = computed(() => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN');
+  readonly canManage = computed(() => canManageSprints(this.myRole()));
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
   readonly backlogListId = 'backlog';
@@ -65,15 +66,12 @@ export class Backlog {
 
   constructor() {
     this.load();
-    this.loadMembers();
+    this.loadProjectRole();
   }
 
-  private loadMembers(): void {
-    this.projectService.listMembers(this.projectKey).subscribe({
-      next: (members) => {
-        const mine = members.find((member) => member.userId === this.currentUserId());
-        this.myRole.set(mine?.role ?? null);
-      },
+  private loadProjectRole(): void {
+    this.projectService.get(this.projectKey).subscribe({
+      next: (project) => this.myRole.set(project.callerRole),
       // Leave myRole null on failure — canManage() then stays false, the safe default.
       error: () => {},
     });

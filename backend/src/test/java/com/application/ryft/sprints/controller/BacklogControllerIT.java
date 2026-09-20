@@ -13,7 +13,10 @@ import com.application.ryft.identity.workspace.entity.Workspace;
 import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
+import com.application.ryft.issues.entity.Issue;
+import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueType;
+import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
 import com.application.ryft.projects.entity.ProjectRole;
@@ -50,6 +53,9 @@ class BacklogControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private ProjectMemberRepository projectMemberRepository;
+
+    @Autowired
+    private IssueRepository issueRepository;
 
     private String uniqueEmail() {
         return "user-" + UUID.randomUUID() + "@example.com";
@@ -134,6 +140,41 @@ class BacklogControllerIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/v1/projects/{projectKey}/backlog", uniqueKey())
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isNotFound());
+    }
+
+    /**
+     * Regression for the readOnly + transitive lazy-write bug (ARCHITECTURE.md's "readOnly + transitive
+     * lazy write" note): {@code BacklogServiceImpl.listBacklog} transitively calls
+     * {@code IssueLabelingService.toResponses}, which backfills {@code Issue.workflowStatusId} on any
+     * pre-Phase-4 row it resolves. A legacy row persisted directly (bypassing the API, which always
+     * populates {@code workflowStatusId} itself) simulates that case. Critically, this re-fetches the row
+     * from the repository afterward rather than trusting the response body — the response looks correct
+     * even under the bug, since the backfill mutates the same in-memory entity used to build it; only a
+     * fresh read exposes whether the write was ever actually flushed.
+     */
+    @Test
+    void getBacklogPersistsTheWorkflowStatusIdBackfillForALegacyIssue() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        User owner = userOf(email);
+        Project project = createProject(key, owner);
+
+        Issue legacyIssue = new Issue(project.getId(), key + "-999", IssueType.TASK, "Legacy issue", null,
+                IssuePriority.MEDIUM, null, owner.getId(), 1000.0);
+        legacyIssue = issueRepository.save(legacyIssue);
+        assertThat(legacyIssue.getWorkflowStatusId()).isNull();
+
+        MvcResult backlog = mockMvc.perform(get("/api/v1/projects/{projectKey}/backlog", key)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        IssueResponse[] issues = objectMapper.readValue(backlog.getResponse().getContentAsString(), IssueResponse[].class);
+        assertThat(issues).hasSize(1);
+        assertThat(issues[0].statusId()).isNotNull();
+
+        Issue persisted = issueRepository.findById(legacyIssue.getId()).orElseThrow();
+        assertThat(persisted.getWorkflowStatusId()).isNotNull().isEqualTo(issues[0].statusId());
     }
 
     @Test

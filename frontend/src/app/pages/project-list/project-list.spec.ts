@@ -15,6 +15,7 @@ function project(key: string): Project {
     description: null,
     createdAt: '2024-01-01T00:00:00Z',
     archivedAt: null,
+    callerRole: null,
   };
 }
 

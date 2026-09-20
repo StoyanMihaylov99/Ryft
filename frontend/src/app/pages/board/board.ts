@@ -4,19 +4,28 @@ import {
   moveItemInArray,
   transferArrayItem,
 } from '@angular/cdk/drag-drop';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
 import { Board as BoardModel, BoardColumn } from '../../core/board/models';
 import { BoardService } from '../../core/board/board.service';
 import { ProjectMember, ProjectRole } from '../../core/project/models';
+import {
+  canChangeStatus,
+  canManageIssues as canManageIssuesPermission,
+  canManageProjectSettings,
+  isOwner as isOwnerPermission,
+} from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
 import {
   CreateComponentRequest,
   CreateLabelRequest,
   Issue,
+  IssueStatus,
   IssueType,
   Label,
   ProjectComponent,
@@ -24,6 +33,12 @@ import {
   UpdateLabelRequest,
 } from '../../core/issue/models';
 import { IssueService } from '../../core/issue/issue.service';
+import {
+  WorkflowScheme,
+  WorkflowStatusEdit,
+  WorkflowTransitionEdit,
+} from '../../core/workflow/models';
+import { WorkflowService } from '../../core/workflow/workflow.service';
 import { ComponentChip } from '../../shared/component-chip/component-chip';
 import { IssueCard } from '../../shared/issue-card/issue-card';
 import { LabelChip } from '../../shared/label-chip/label-chip';
@@ -42,13 +57,15 @@ import { IssueDetailPanel } from './issue-detail-panel/issue-detail-panel';
   ],
   selector: 'app-board',
   templateUrl: './board.html',
-  styleUrl: './board.css',
+  styleUrls: ['./board.css', './board-workflow.css'],
 })
 export class Board {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly boardService = inject(BoardService);
   private readonly issueService = inject(IssueService);
   private readonly projectService = inject(ProjectService);
+  private readonly workflowService = inject(WorkflowService);
   private readonly authService = inject(AuthService);
   private readonly formBuilder = inject(FormBuilder);
 
@@ -62,11 +79,21 @@ export class Board {
 
   /** Only Owner/Admin create, edit or delete issues — everyone else just comments and drags cards. */
   readonly myRole = signal<ProjectRole | null>(null);
-  readonly canManageIssues = computed(() => this.myRole() === 'OWNER' || this.myRole() === 'ADMIN');
+  readonly canManageIssues = computed(() => canManageIssuesPermission(this.myRole()));
   /** Adding members is Owner/Admin; changing roles or removing members is Owner-only (server-enforced). */
   readonly canAddMembers = computed(() => this.canManageIssues());
-  readonly isOwner = computed(() => this.myRole() === 'OWNER');
+  readonly canManageWorkflow = computed(() => canManageProjectSettings(this.myRole()));
+  /** A Viewer is fully read-only — no drag-and-drop status changes. */
+  readonly canDragStatus = computed(() => canChangeStatus(this.myRole()));
+  readonly isOwner = computed(() => isOwnerPermission(this.myRole()));
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
+
+  /** Members/Workflow/Labels & components are project-settings panels, not board content — while one
+   *  is open the board grid and its filters are hidden so the panel reads as its own focused view,
+   *  rather than one more thing stacked above the still-visible Kanban board. */
+  readonly showingPanel = computed(
+    () => this.showMembersPanel() || this.showLabelsPanel() || this.showWorkflowPanel(),
+  );
 
   readonly members = signal<ProjectMember[]>([]);
   readonly showMembersPanel = signal(false);
@@ -86,6 +113,45 @@ export class Board {
   readonly newComponentName = signal('');
   readonly creatingComponent = signal(false);
   readonly componentError = signal<string | null>(null);
+
+  /** The project's workflow scheme, loaded lazily on first opening the Workflow panel (not eagerly
+   *  like labels/components, which every board render needs for filtering/chips). */
+  readonly workflowScheme = signal<WorkflowScheme | null>(null);
+  readonly showWorkflowPanel = signal(false);
+  readonly workflowLoading = signal(false);
+  /** Single in-flight-request flag shared by every status/transition mutation below — the panel only
+   *  ever has one save in flight at a time, so a per-row flag (as labels/components don't have
+   *  either) would be unnecessary. */
+  readonly savingWorkflow = signal(false);
+  readonly workflowError = signal<string | null>(null);
+  readonly newStatusName = signal('');
+  readonly newStatusCategory = signal<IssueStatus>('TODO');
+  /** The 4 fixed categories a status can belong to — never itself configurable. */
+  readonly statusCategories: readonly IssueStatus[] = ['TODO', 'BLOCKED', 'IN_PROGRESS', 'DONE'];
+  readonly sortedWorkflowStatuses = computed(() =>
+    [...(this.workflowScheme()?.statuses ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
+  );
+  /** `${fromStatusId}:${toStatusId}` pairs currently checked in the transition matrix — a local
+   *  staging area distinct from `workflowScheme().transitions` so every checkbox toggle doesn't fire
+   *  its own request; only `saveTransitions()` sends the batch as one PATCH. */
+  readonly draftTransitionKeys = signal<Set<string>>(new Set());
+  readonly transitionsDirty = computed(() => {
+    const saved = new Set(
+      (this.workflowScheme()?.transitions ?? []).map((transition) =>
+        this.transitionKey(transition.fromStatusId, transition.toStatusId),
+      ),
+    );
+    const draft = this.draftTransitionKeys();
+    if (saved.size !== draft.size) {
+      return true;
+    }
+    for (const key of saved) {
+      if (!draft.has(key)) {
+        return true;
+      }
+    }
+    return false;
+  });
 
   /** Single-select filters applied client-side over the already-loaded board — the board endpoint
    *  has no server-side labelId/componentId filtering (it's never paginated and every card already
@@ -126,11 +192,59 @@ export class Board {
     role: ['MEMBER' as ProjectRole, [Validators.required]],
   });
 
+  /** Reactive, unlike a one-time `route.snapshot.queryParamMap` read: switching panels while
+   *  already on `/board` is a same-route, query-param-only navigation, so this component instance
+   *  is reused and its constructor never re-runs — a snapshot read would go stale after the first
+   *  load. */
+  private readonly panelParam = toSignal(
+    this.route.queryParamMap.pipe(map((params) => params.get('panel'))),
+    { initialValue: this.route.snapshot.queryParamMap.get('panel') },
+  );
+
   constructor() {
     this.loadBoard();
+    this.loadProjectRole();
     this.loadMembers();
     this.loadLabels();
     this.loadComponents();
+
+    // The URL is the single source of truth for which panel is open. `canManageWorkflow()` is a
+    // tracked dependency here (not just a guard), so this self-heals if the URL is loaded before
+    // `myRole` finishes fetching: the effect reruns once the role arrives and opens the Workflow
+    // panel retroactively rather than requiring a page reload.
+    effect(() => {
+      const panel = this.panelParam();
+
+      this.showMembersPanel.set(panel === 'members');
+      this.memberError.set(null);
+
+      this.showLabelsPanel.set(panel === 'labels' && this.canManageIssues());
+      this.labelError.set(null);
+      this.componentError.set(null);
+
+      const showWorkflow = panel === 'workflow' && this.canManageWorkflow();
+      this.showWorkflowPanel.set(showWorkflow);
+      this.workflowError.set(null);
+      if (showWorkflow && !this.workflowScheme()) {
+        this.loadWorkflow();
+      }
+    });
+  }
+
+  /** Navigates to reflect the panel change instead of mutating the panel signals directly, so the
+   *  URL stays the single source of truth. `replaceUrl: true` keeps back-button behavior sane —
+   *  toggling a panel open/closed doesn't spam browser history. */
+  private setPanel(panel: 'members' | 'workflow' | 'labels' | null): void {
+    this.router.navigate([], { relativeTo: this.route, queryParams: { panel }, replaceUrl: true });
+  }
+
+  private loadProjectRole(): void {
+    this.projectService.get(this.projectKey).subscribe({
+      next: (project) => this.myRole.set(project.callerRole),
+      // Leave myRole null on failure — every canManage*/canDragStatus gate then stays false, the
+      // safe default.
+      error: () => {},
+    });
   }
 
   private loadLabels(): void {
@@ -151,19 +265,14 @@ export class Board {
 
   private loadMembers(): void {
     this.projectService.listMembers(this.projectKey).subscribe({
-      next: (members) => {
-        this.members.set(members);
-        const mine = members.find((member) => member.userId === this.currentUserId());
-        this.myRole.set(mine?.role ?? null);
-      },
-      // Leave myRole null on failure — canManageIssues() then stays false, the safe default.
+      next: (members) => this.members.set(members),
+      // Non-critical: the Members panel just has no roster to show.
       error: () => {},
     });
   }
 
   toggleMembersPanel(): void {
-    this.showMembersPanel.update((shown) => !shown);
-    this.memberError.set(null);
+    this.setPanel(this.showMembersPanel() ? null : 'members');
   }
 
   submitInvite(): void {
@@ -254,7 +363,7 @@ export class Board {
       event.currentIndex,
     );
 
-    this.issueService.changeStatus(issue.key, targetColumn.category).subscribe({
+    this.issueService.changeStatus(issue.key, targetColumn.statusId).subscribe({
       error: () => {
         transferArrayItem(
           event.container.data,
@@ -285,13 +394,11 @@ export class Board {
       if (index === -1) {
         continue;
       }
-      if (column.category === updated.status) {
+      if (column.statusId === updated.statusId) {
         column.issues[index] = updated;
       } else {
         column.issues.splice(index, 1);
-        board.columns
-          .find((candidate) => candidate.category === updated.status)
-          ?.issues.push(updated);
+        board.columns.find((candidate) => candidate.statusId === updated.statusId)?.issues.push(updated);
       }
       break;
     }
@@ -422,9 +529,7 @@ export class Board {
   }
 
   toggleLabelsPanel(): void {
-    this.showLabelsPanel.update((shown) => !shown);
-    this.labelError.set(null);
-    this.componentError.set(null);
+    this.setPanel(this.showLabelsPanel() ? null : 'labels');
   }
 
   submitNewLabel(): void {
@@ -556,5 +661,249 @@ export class Board {
         this.componentError.set('Failed to delete the component.');
       },
     });
+  }
+
+  toggleWorkflowPanel(): void {
+    this.setPanel(this.showWorkflowPanel() ? null : 'workflow');
+  }
+
+  private loadWorkflow(): void {
+    this.workflowLoading.set(true);
+    this.workflowError.set(null);
+    this.workflowService.get(this.projectKey).subscribe({
+      next: (scheme) => {
+        this.workflowLoading.set(false);
+        this.applyWorkflowScheme(scheme);
+      },
+      error: () => {
+        this.workflowLoading.set(false);
+        this.workflowError.set('Failed to load the workflow.');
+      },
+    });
+  }
+
+  private applyWorkflowScheme(scheme: WorkflowScheme): void {
+    this.workflowScheme.set(scheme);
+    this.draftTransitionKeys.set(
+      new Set(
+        scheme.transitions.map((transition) =>
+          this.transitionKey(transition.fromStatusId, transition.toStatusId),
+        ),
+      ),
+    );
+  }
+
+  private transitionKey(fromStatusId: string, toStatusId: string): string {
+    return `${fromStatusId}:${toStatusId}`;
+  }
+
+  private statusEditsFromScheme(scheme: WorkflowScheme): WorkflowStatusEdit[] {
+    return scheme.statuses.map((status) => ({
+      id: status.id,
+      name: status.name,
+      category: status.category,
+      sortOrder: status.sortOrder,
+    }));
+  }
+
+  private transitionEditsFromScheme(scheme: WorkflowScheme): WorkflowTransitionEdit[] {
+    return scheme.transitions.map((transition) => ({
+      id: transition.id,
+      fromStatusId: transition.fromStatusId,
+      toStatusId: transition.toStatusId,
+      name: transition.name,
+    }));
+  }
+
+  /** Filters the scheme's last-*saved* transitions down to only those whose endpoints are both
+   *  still present in `statuses` — so a status being removed can't leave a dangling transition
+   *  reference in the submitted request (the backend rejects any transition referencing a status
+   *  outside the kept set). */
+  private transitionEditsForStatuses(
+    statuses: WorkflowStatusEdit[],
+    scheme: WorkflowScheme,
+  ): WorkflowTransitionEdit[] {
+    const keptStatusIds = new Set(
+      statuses.map((status) => status.id).filter((id): id is string => id !== null),
+    );
+    return this.transitionEditsFromScheme(scheme).filter(
+      (transition) =>
+        keptStatusIds.has(transition.fromStatusId) && keptStatusIds.has(transition.toStatusId),
+    );
+  }
+
+  /** Every status add/rename/reorder/delete sends the full current status list in one PATCH,
+   *  alongside the scheme's last-*saved* transitions — filtered down to the statuses being kept,
+   *  never the in-progress transition matrix draft, which only `saveTransitions()` sends. */
+  private submitStatusEdits(statuses: WorkflowStatusEdit[]): void {
+    const scheme = this.workflowScheme();
+    if (!scheme || this.savingWorkflow()) {
+      return;
+    }
+    this.savingWorkflow.set(true);
+    this.workflowError.set(null);
+    this.workflowService
+      .update(this.projectKey, {
+        statuses,
+        transitions: this.transitionEditsForStatuses(statuses, scheme),
+      })
+      .subscribe({
+        next: (updated) => {
+          this.savingWorkflow.set(false);
+          this.applyWorkflowScheme(updated);
+        },
+        error: (err) => {
+          this.savingWorkflow.set(false);
+          this.workflowError.set(this.workflowErrorMessage(err));
+        },
+      });
+  }
+
+  renameWorkflowStatus(statusId: string, name: string): void {
+    const scheme = this.workflowScheme();
+    const trimmed = name.trim();
+    const current = scheme?.statuses.find((status) => status.id === statusId);
+    if (!scheme || !current || !trimmed || trimmed === current.name) {
+      return;
+    }
+    this.submitStatusEdits(
+      this.statusEditsFromScheme(scheme).map((status) =>
+        status.id === statusId ? { ...status, name: trimmed } : status,
+      ),
+    );
+  }
+
+  recategorizeWorkflowStatus(statusId: string, category: IssueStatus): void {
+    const scheme = this.workflowScheme();
+    if (!scheme) {
+      return;
+    }
+    this.submitStatusEdits(
+      this.statusEditsFromScheme(scheme).map((status) =>
+        status.id === statusId ? { ...status, category } : status,
+      ),
+    );
+  }
+
+  moveWorkflowStatus(statusId: string, direction: -1 | 1): void {
+    const scheme = this.workflowScheme();
+    if (!scheme) {
+      return;
+    }
+    const statuses = this.sortedWorkflowStatuses();
+    const index = statuses.findIndex((status) => status.id === statusId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= statuses.length) {
+      return;
+    }
+    const reordered = [...statuses];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    this.submitStatusEdits(
+      reordered.map((status, sortOrder) => ({
+        id: status.id,
+        name: status.name,
+        category: status.category,
+        sortOrder,
+      })),
+    );
+  }
+
+  removeWorkflowStatus(statusId: string): void {
+    const scheme = this.workflowScheme();
+    if (!scheme) {
+      return;
+    }
+    this.submitStatusEdits(
+      this.statusEditsFromScheme(scheme).filter((status) => status.id !== statusId),
+    );
+  }
+
+  submitNewWorkflowStatus(): void {
+    const scheme = this.workflowScheme();
+    const name = this.newStatusName().trim();
+    if (!scheme || !name || this.savingWorkflow()) {
+      return;
+    }
+    this.savingWorkflow.set(true);
+    this.workflowError.set(null);
+    const statuses: WorkflowStatusEdit[] = [
+      ...this.statusEditsFromScheme(scheme),
+      { id: null, name, category: this.newStatusCategory(), sortOrder: scheme.statuses.length },
+    ];
+    this.workflowService
+      .update(this.projectKey, {
+        statuses,
+        transitions: this.transitionEditsForStatuses(statuses, scheme),
+      })
+      .subscribe({
+        next: (updated) => {
+          this.savingWorkflow.set(false);
+          this.applyWorkflowScheme(updated);
+          this.newStatusName.set('');
+        },
+        error: (err) => {
+          this.savingWorkflow.set(false);
+          this.workflowError.set(this.workflowErrorMessage(err));
+        },
+      });
+  }
+
+  isTransitionChecked(fromStatusId: string, toStatusId: string): boolean {
+    return this.draftTransitionKeys().has(this.transitionKey(fromStatusId, toStatusId));
+  }
+
+  toggleDraftTransition(fromStatusId: string, toStatusId: string): void {
+    const key = this.transitionKey(fromStatusId, toStatusId);
+    this.draftTransitionKeys.update((keys) => {
+      const next = new Set(keys);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  saveTransitions(): void {
+    const scheme = this.workflowScheme();
+    if (!scheme || this.savingWorkflow()) {
+      return;
+    }
+    this.savingWorkflow.set(true);
+    this.workflowError.set(null);
+    const existingByKey = new Map(
+      scheme.transitions.map((transition) => [
+        this.transitionKey(transition.fromStatusId, transition.toStatusId),
+        transition,
+      ]),
+    );
+    const transitions: WorkflowTransitionEdit[] = [...this.draftTransitionKeys()].map((key) => {
+      const [fromStatusId, toStatusId] = key.split(':');
+      const existing = existingByKey.get(key);
+      return { id: existing?.id ?? null, fromStatusId, toStatusId, name: existing?.name ?? null };
+    });
+    this.workflowService
+      .update(this.projectKey, { statuses: this.statusEditsFromScheme(scheme), transitions })
+      .subscribe({
+        next: (updated) => {
+          this.savingWorkflow.set(false);
+          this.applyWorkflowScheme(updated);
+        },
+        error: (err) => {
+          this.savingWorkflow.set(false);
+          this.workflowError.set(this.workflowErrorMessage(err));
+        },
+      });
+  }
+
+  private workflowErrorMessage(err: { status?: number }): string {
+    if (err.status === 409) {
+      return "Can't save: that status is still in use, or a duplicate transition already exists.";
+    }
+    if (err.status === 400) {
+      return "Can't save: a transition can only reference a status that already existed before this change.";
+    }
+    return 'Failed to save the workflow.';
   }
 }

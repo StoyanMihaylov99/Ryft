@@ -32,10 +32,12 @@ public class WorkflowStatus {
     private WorkflowScheme workflowScheme;
 
     @Column(nullable = false)
+    @Setter
     private String name;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "varchar(32)")
+    @Setter
     private StatusCategory category;
 
     /** Board column ordering. "order" is a reserved SQL keyword, hence "sort_order". */
