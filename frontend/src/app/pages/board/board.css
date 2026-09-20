@@ -42,26 +42,6 @@ h1 {
   gap: 0.625rem;
 }
 
-.secondary {
-  padding: 0.5rem 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-.secondary:hover {
-  background: var(--bg-elevated-2);
-  border-color: var(--border);
-}
-
 .submit {
   padding: 0.5rem 0.875rem;
   border: none;
@@ -149,10 +129,36 @@ h1 {
 }
 
 .members-panel h2,
-.labels-panel h2 {
-  margin: 0 0 1rem;
+.labels-panel h2,
+.workflow-panel h2 {
+  margin: 0;
   font-size: 0.9375rem;
   font-weight: 600;
+  color: var(--text);
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.panel-close-btn {
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.panel-close-btn:hover {
+  background: var(--bg-elevated-2);
   color: var(--text);
 }
 

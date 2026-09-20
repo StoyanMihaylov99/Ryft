@@ -1,8 +1,8 @@
 package com.application.ryft.issues.repository;
 
 import com.application.ryft.issues.entity.Issue;
-import com.application.ryft.issues.entity.IssueStatus;
 import com.application.ryft.issues.entity.IssueType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,7 +46,16 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
      */
     long countByProjectIdAndParentIssueId(UUID projectId, UUID parentIssueId);
 
-    long countByProjectIdAndParentIssueIdAndStatus(UUID projectId, UUID parentIssueId, IssueStatus status);
+    /**
+     * "Done" (or any other category) is a set of status ids under a configurable scheme, not one fixed
+     * status — see {@code WorkflowService.getStatusIdsInCategory}, whose result feeds this query's
+     * {@code IN} clause.
+     */
+    long countByProjectIdAndParentIssueIdAndWorkflowStatusIdIn(UUID projectId, UUID parentIssueId,
+            Collection<UUID> workflowStatusIds);
+
+    /** Backs {@code WorkflowServiceImpl}'s status-deletion guard — see {@code IssueService.existsAnyWithWorkflowStatusId}. */
+    boolean existsByProjectIdAndWorkflowStatusId(UUID projectId, UUID workflowStatusId);
 
     /**
      * Backs {@code GET /projects/{projectKey}/issues?labelId=} — a JPQL sub-select against

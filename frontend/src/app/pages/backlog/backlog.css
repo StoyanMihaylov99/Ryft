@@ -35,32 +35,6 @@ h1 {
   letter-spacing: -0.02em;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.secondary {
-  padding: 0.5rem 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-}
-
-.secondary:hover {
-  background: var(--bg-elevated-2);
-  border-color: var(--border);
-}
-
 .banner {
   padding: 0.625rem 0.75rem;
   border-radius: 6px;

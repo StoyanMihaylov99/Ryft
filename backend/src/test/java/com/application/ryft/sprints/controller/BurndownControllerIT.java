@@ -15,8 +15,10 @@ import com.application.ryft.identity.workspace.repository.WorkspaceRepository;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.IssueResponse;
-import com.application.ryft.issues.entity.IssueStatus;
+import com.application.ryft.issues.entity.Issue;
+import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueType;
+import com.application.ryft.issues.repository.IssueRepository;
 import com.application.ryft.projects.entity.Project;
 import com.application.ryft.projects.entity.ProjectMember;
 import com.application.ryft.projects.entity.ProjectRole;
@@ -27,6 +29,8 @@ import com.application.ryft.sprints.dto.BurndownResponse;
 import com.application.ryft.sprints.dto.CreateSprintRequest;
 import com.application.ryft.sprints.dto.MoveIssueToSprintRequest;
 import com.application.ryft.sprints.dto.SprintResponse;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
+import com.application.ryft.workflow.entity.StatusCategory;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -60,6 +64,9 @@ class BurndownControllerIT extends AbstractIntegrationTest {
 
     @Autowired
     private ProjectMemberRepository projectMemberRepository;
+
+    @Autowired
+    private IssueRepository issueRepository;
 
     private String uniqueEmail() {
         return "user-" + UUID.randomUUID() + "@example.com";
@@ -123,12 +130,24 @@ class BurndownControllerIT extends AbstractIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    private void changeIssueStatus(String issueKey, IssueStatus newStatus, String token) throws Exception {
+    private void changeIssueStatus(String projectKey, String issueKey, StatusCategory newCategory, String token)
+            throws Exception {
+        UUID statusId = statusIdOf(projectKey, token, newCategory);
         mockMvc.perform(patch("/api/v1/issues/{issueKey}/status", issueKey)
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(newStatus))))
+                        .content(objectMapper.writeValueAsString(new ChangeIssueStatusRequest(statusId))))
                 .andExpect(status().isOk());
+    }
+
+    private UUID statusIdOf(String projectKey, String token, StatusCategory category) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/projects/{projectKey}/workflow", projectKey)
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn();
+        WorkflowSchemeResponse scheme = objectMapper.readValue(result.getResponse().getContentAsString(),
+                WorkflowSchemeResponse.class);
+        return scheme.statuses().stream().filter(s -> s.category() == category).findFirst().orElseThrow().id();
     }
 
     private SprintResponse startSprint(UUID sprintId, String token) throws Exception {
@@ -166,7 +185,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         SprintResponse activeSprint = startSprint(sprint.id(), token);
         assertThat(activeSprint.committedPoints()).isEqualTo(8);
 
-        changeIssueStatus(doneIssue.key(), IssueStatus.DONE, token);
+        changeIssueStatus(key, doneIssue.key(), StatusCategory.DONE, token);
 
         BurndownResponse burndown = getBurndown(sprint.id(), token);
 
@@ -185,6 +204,42 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         assertThat(burndown.idealBurndown()).hasSize(8);
         assertThat(burndown.idealBurndown().get(0).remainingPoints()).isEqualTo(8);
         assertThat(burndown.idealBurndown().get(7).remainingPoints()).isEqualTo(0);
+    }
+
+    /**
+     * Regression for the readOnly + transitive lazy-write bug (ARCHITECTURE.md's "readOnly + transitive
+     * lazy write" note): {@code BurndownServiceImpl.getBurndown} transitively calls
+     * {@code IssueLabelingService.toResponses} (via {@code IssueService#listForSprint}), which backfills
+     * {@code Issue.workflowStatusId} on any pre-Phase-4 row it resolves. A legacy row persisted directly
+     * (bypassing the API, which always populates {@code workflowStatusId} itself) simulates that case.
+     * Critically, this re-fetches the row from the repository afterward rather than trusting the
+     * response — the endpoint responds fine either way, since the backfill mutates the same in-memory
+     * entity used to build the response; only a fresh read exposes whether the write was ever flushed.
+     */
+    @Test
+    void burndownPersistsTheWorkflowStatusIdBackfillForALegacyIssue() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        User owner = userOf(email);
+        Project project = createProject(key, owner);
+        LocalDate today = LocalDate.now();
+        SprintResponse sprint = createSprint(key, token, new CreateSprintRequest("Sprint 1", null,
+                today.minusDays(1), today.plusDays(5)));
+        startSprint(sprint.id(), token);
+
+        Issue legacyIssue = new Issue(project.getId(), key + "-999", IssueType.TASK, "Legacy issue", null,
+                IssuePriority.MEDIUM, null, owner.getId(), 1000.0);
+        legacyIssue.setSprintId(sprint.id());
+        legacyIssue = issueRepository.save(legacyIssue);
+        assertThat(legacyIssue.getWorkflowStatusId()).isNull();
+
+        mockMvc.perform(get("/api/v1/sprints/{sprintId}/burndown", sprint.id())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+                .andExpect(status().isOk());
+
+        Issue persisted = issueRepository.findById(legacyIssue.getId()).orElseThrow();
+        assertThat(persisted.getWorkflowStatusId()).isNotNull();
     }
 
     @Test

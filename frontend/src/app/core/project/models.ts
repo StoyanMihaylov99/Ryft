@@ -1,3 +1,7 @@
+export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
+
+/** `callerRole` lets a page gate every flat Owner/Admin-only action from data it already fetches,
+ *  instead of loading the full member list and filtering it down to the caller's own row. */
 export interface Project {
   id: string;
   workspaceId: string;
@@ -6,6 +10,7 @@ export interface Project {
   description: string | null;
   createdAt: string;
   archivedAt: string | null;
+  callerRole: ProjectRole | null;
 }
 
 export interface CreateProjectRequest {
@@ -13,8 +18,6 @@ export interface CreateProjectRequest {
   name: string;
   description?: string | null;
 }
-
-export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER';
 
 export interface ProjectMember {
   userId: string;

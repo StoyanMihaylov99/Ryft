@@ -26,6 +26,14 @@ import {
   UpdateIssueRequest,
 } from '../../../core/issue/models';
 import { IssueService } from '../../../core/issue/issue.service';
+import { ProjectRole } from '../../../core/project/models';
+import {
+  canChangeStatus,
+  canComment as canCommentPermission,
+  canManageIssues,
+} from '../../../core/project/permissions';
+import { WorkflowStatus, WorkflowTransition } from '../../../core/workflow/models';
+import { WorkflowService } from '../../../core/workflow/workflow.service';
 import { ComponentChip } from '../../../shared/component-chip/component-chip';
 import { IssueTypeBadge } from '../../../shared/issue-type-badge/issue-type-badge';
 import { LabelChip } from '../../../shared/label-chip/label-chip';
@@ -39,6 +47,7 @@ import { LabelChip } from '../../../shared/label-chip/label-chip';
 export class IssueDetailPanel {
   private readonly issueService = inject(IssueService);
   private readonly commentService = inject(CommentService);
+  private readonly workflowService = inject(WorkflowService);
   private readonly authService = inject(AuthService);
 
   readonly issueKey = input.required<string>();
@@ -46,9 +55,9 @@ export class IssueDetailPanel {
    *  resolve the linked-epic/subtask-parent chips — optional so a panel opened without it (e.g. in
    *  isolation) just skips that field and those chips. */
   readonly projectKey = input<string | null>(null);
-  /** Owner/Admin only — title, description, priority and delete are gated on this; status and
-   *  comments are not (see IssueServiceImpl.changeStatus's javadoc for why status stays open). */
-  readonly canManage = input(false);
+  /** The caller's role on this project — drives every permission gate below except `canEditIssue`
+   *  (see that computed's own doc for why it's sourced from the issue itself instead). */
+  readonly myRole = input<ProjectRole | null>(null);
   readonly closed = output<void>();
   readonly updated = output<Issue>();
   readonly deleted = output<string>();
@@ -74,6 +83,12 @@ export class IssueDetailPanel {
   readonly allLabels = signal<Label[]>([]);
   readonly allComponents = signal<ProjectComponent[]>([]);
 
+  /** This project's workflow scheme, for the status dropdown's options and its legal-next-status
+   *  filtering — loaded once per projectKey, same lifecycle as `projectIssues`/`allLabels`. */
+  readonly workflowStatuses = signal<WorkflowStatus[]>([]);
+  readonly workflowTransitions = signal<WorkflowTransition[]>([]);
+  readonly workflowLoaded = signal(false);
+
   /** The key currently being displayed, which drifts from `issueKey()` once the user drills into a
    *  subtask — see `openSubtask`. Doubles as the race-guard for in-flight requests: a response is
    *  only applied if this still matches the key it was requested for. */
@@ -95,7 +110,7 @@ export class IssueDetailPanel {
   readonly draftDescription = signal('');
   readonly draftPriority = signal<IssuePriority>('MEDIUM');
   readonly draftStoryPoints = signal<number | null>(null);
-  readonly draftStatus = signal<IssueStatus>('TODO');
+  readonly draftStatusId = signal('');
   readonly draftParentId = signal<string | null>(null);
   readonly draftLabelIds = signal<string[]>([]);
   readonly draftComponentIds = signal<string[]>([]);
@@ -110,15 +125,47 @@ export class IssueDetailPanel {
 
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
+  /** Owner/Admin, or an involved Member (assignee/reporter) — sourced directly from the server's
+   *  `Issue.callerCanEdit` rather than recomputed from `myRole()`/`currentUserId()` here. The pure
+   *  `canEditIssue` function in `core/project/permissions.ts` mirrors the same backend rule and is
+   *  independently unit-tested, but trusting the field the issue itself already carries means this
+   *  component can never drift out of sync with `IssueServiceImpl.requireCanEditIssue` if that rule
+   *  ever changes — there's exactly one place the rule is expressed as logic (the backend), and one
+   *  place it's read from (here). */
+  readonly canEditIssue = computed(() => this.issue()?.callerCanEdit ?? false);
+  /** Delete stays Owner/Admin-only regardless of involvement — not derivable from `callerCanEdit`,
+   *  which also returns true for an involved Member. */
+  readonly canDeleteIssue = computed(() => canManageIssues(this.myRole()));
+  /** A Viewer can never change status; every other role can, on any issue (see
+   *  `IssueServiceImpl.changeStatus`, which checks only for Viewer, not involvement). */
+  readonly canChangeStatusForPanel = computed(() => canChangeStatus(this.myRole()));
+  readonly canCommentInPanel = computed(() => canCommentPermission(this.myRole()));
+  /** Subtask creation stays Owner/Admin-only, unlike editing an existing issue — the backend's
+   *  `createSubtask` gate wasn't loosened by the Phase-4 involvement rule (only create/update/delete
+   *  of top-level issues were), so this deliberately doesn't use `canEditIssue`. */
+  readonly canCreateSubtask = computed(() => canManageIssues(this.myRole()));
+
   readonly hasUnsavedChanges = computed(() => {
     const issue = this.issue();
     if (!issue) {
       return false;
     }
-    return this.buildPatchRequest(issue) !== null || this.draftStatus() !== issue.status;
+    return this.buildPatchRequest(issue) !== null || this.draftStatusId() !== issue.statusId;
   });
 
   readonly titleIsBlank = computed(() => this.draftTitle().trim().length === 0);
+
+  /** The status dropdown's options for the currently displayed issue: every status reachable from
+   *  its current one per the loaded transition graph, plus its current status itself (a no-op
+   *  "keep as-is" choice). Falls back to just the current status until the workflow scheme has
+   *  loaded, rather than show an empty or unfiltered dropdown. */
+  readonly statusOptions = computed<WorkflowStatus[]>(() => {
+    const issue = this.issue();
+    if (!issue) {
+      return [];
+    }
+    return this.legalStatusOptionsFrom(issue.statusId, issue.statusName, issue.statusCategory);
+  });
 
   /** True once the user picks "No epic" on an issue that currently has one linked. There is no
    *  backend support for clearing a parent link (see UpdateIssueRequest's javadoc), so this
@@ -167,7 +214,7 @@ export class IssueDetailPanel {
     if (subtasks.length === 0) {
       return null;
     }
-    const done = subtasks.filter((subtask) => subtask.status === 'DONE').length;
+    const done = subtasks.filter((subtask) => subtask.statusCategory === 'DONE').length;
     return `${done}/${subtasks.length} done`;
   });
 
@@ -188,6 +235,7 @@ export class IssueDetailPanel {
       if (projectKey) {
         this.loadProjectIssues(projectKey);
         this.loadLabelsAndComponents(projectKey);
+        this.loadWorkflow(projectKey);
       }
     });
   }
@@ -300,6 +348,44 @@ export class IssueDetailPanel {
     });
   }
 
+  private loadWorkflow(projectKey: string): void {
+    this.workflowService.get(projectKey).subscribe({
+      next: (scheme) => {
+        this.workflowStatuses.set(scheme.statuses);
+        this.workflowTransitions.set(scheme.transitions);
+        this.workflowLoaded.set(true);
+      },
+      // Non-critical: the status dropdown falls back to showing just the current status.
+      error: () => {},
+    });
+  }
+
+  /** Every status reachable from `fromStatusId` per the loaded transition graph, plus
+   *  `fromStatusId` itself (a no-op "keep as-is" choice) — falls back to just that one status until
+   *  the workflow scheme has loaded. Shared by the main issue's status dropdown and each subtask
+   *  row's, since a Subtask has its own status independent of its parent's. */
+  private legalStatusOptionsFrom(
+    fromStatusId: string,
+    fromStatusName: string,
+    fromStatusCategory: IssueStatus,
+  ): WorkflowStatus[] {
+    if (!this.workflowLoaded()) {
+      return [{ id: fromStatusId, name: fromStatusName, category: fromStatusCategory, sortOrder: 0 }];
+    }
+    const legalToIds = new Set(
+      this.workflowTransitions()
+        .filter((transition) => transition.fromStatusId === fromStatusId)
+        .map((transition) => transition.toStatusId),
+    );
+    return this.workflowStatuses().filter(
+      (status) => status.id === fromStatusId || legalToIds.has(status.id),
+    );
+  }
+
+  subtaskStatusOptions(subtask: Issue): WorkflowStatus[] {
+    return this.legalStatusOptionsFrom(subtask.statusId, subtask.statusName, subtask.statusCategory);
+  }
+
   /** Swaps the panel to show a subtask in place of its parent — a lightweight drill-down rather
    *  than a full navigation stack, since there's nowhere further to drill from a Subtask (it can't
    *  have subtasks of its own). Closing the panel from here returns to the board, not to the parent. */
@@ -310,7 +396,7 @@ export class IssueDetailPanel {
   submitSubtask(): void {
     const issue = this.issue();
     const title = this.newSubtaskTitle().trim();
-    if (!issue || !title || !this.canManage() || this.creatingSubtask()) {
+    if (!issue || !title || !this.canCreateSubtask() || this.creatingSubtask()) {
       return;
     }
     const parentKey = issue.key;
@@ -334,14 +420,25 @@ export class IssueDetailPanel {
     });
   }
 
-  changeSubtaskStatus(subtask: Issue, status: IssueStatus): void {
+  changeSubtaskStatus(subtask: Issue, statusId: string): void {
+    if (!this.canChangeStatusForPanel()) {
+      return;
+    }
     const previous = this.subtasks();
+    const targetStatus = this.workflowStatuses().find((status) => status.id === statusId);
     this.subtasks.set(
       previous.map((candidate) =>
-        candidate.key === subtask.key ? { ...candidate, status } : candidate,
+        candidate.key === subtask.key
+          ? {
+              ...candidate,
+              statusId,
+              statusName: targetStatus?.name ?? candidate.statusName,
+              statusCategory: targetStatus?.category ?? candidate.statusCategory,
+            }
+          : candidate,
       ),
     );
-    this.issueService.changeStatus(subtask.key, status).subscribe({
+    this.issueService.changeStatus(subtask.key, statusId).subscribe({
       next: (updated) => {
         this.subtasks.update((list) =>
           list.map((candidate) => (candidate.key === updated.key ? updated : candidate)),
@@ -359,7 +456,7 @@ export class IssueDetailPanel {
     this.draftDescription.set(issue.description ?? '');
     this.draftPriority.set(issue.priority);
     this.draftStoryPoints.set(issue.storyPoints);
-    this.draftStatus.set(issue.status);
+    this.draftStatusId.set(issue.statusId);
     this.draftParentId.set(issue.parentId);
     this.draftLabelIds.set(issue.labels.map((label) => label.id));
     this.draftComponentIds.set(issue.components.map((component) => component.id));
@@ -376,7 +473,7 @@ export class IssueDetailPanel {
   }
 
   toggleDraftLabel(labelId: string): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.labelsTouched.set(true);
@@ -386,7 +483,7 @@ export class IssueDetailPanel {
   }
 
   toggleDraftComponent(componentId: string): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.componentsTouched.set(true);
@@ -396,39 +493,42 @@ export class IssueDetailPanel {
   }
 
   updateDraftTitle(value: string): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.draftTitle.set(value);
   }
 
   updateDraftDescription(value: string): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.draftDescription.set(value);
   }
 
   updateDraftPriority(priority: IssuePriority): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.draftPriority.set(priority);
   }
 
   updateDraftStoryPoints(storyPoints: number | null): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.draftStoryPoints.set(storyPoints);
   }
 
-  updateDraftStatus(status: IssueStatus): void {
-    this.draftStatus.set(status);
+  updateDraftStatus(statusId: string): void {
+    if (!this.canChangeStatusForPanel()) {
+      return;
+    }
+    this.draftStatusId.set(statusId);
   }
 
   updateDraftParentId(parentId: string | null): void {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return;
     }
     this.draftParentId.set(parentId);
@@ -440,8 +540,8 @@ export class IssueDetailPanel {
       return;
     }
     const patchRequest = this.buildPatchRequest(issue);
-    const status = this.draftStatus();
-    const statusChanged = status !== issue.status;
+    const statusId = this.draftStatusId();
+    const statusChanged = statusId !== issue.statusId;
     if (!patchRequest && !statusChanged) {
       return;
     }
@@ -458,7 +558,7 @@ export class IssueDetailPanel {
         if (!statusChanged) {
           return of(patched);
         }
-        return this.issueService.changeStatus(issue.key, status).pipe(
+        return this.issueService.changeStatus(issue.key, statusId).pipe(
           catchError(() => {
             this.saving.set(false);
             if (this.displayedIssueKey() === savingKey) {
@@ -466,7 +566,7 @@ export class IssueDetailPanel {
               // status change failed — otherwise local state would diverge from the server.
               this.issue.set(patched);
               this.resetDraft(patched);
-              this.draftStatus.set(status);
+              this.draftStatusId.set(statusId);
               this.errorMessage.set(
                 patchRequest
                   ? 'Status change failed; other changes were saved.'
@@ -501,7 +601,7 @@ export class IssueDetailPanel {
 
   /** Returns only the managed fields that differ from the loaded issue, or null if none/not allowed. */
   private buildPatchRequest(issue: Issue): UpdateIssueRequest | null {
-    if (!this.canManage()) {
+    if (!this.canEditIssue()) {
       return null;
     }
     const request: UpdateIssueRequest = {};
@@ -547,7 +647,7 @@ export class IssueDetailPanel {
 
   deleteIssue(): void {
     const issue = this.issue();
-    if (!this.canManage() || !issue) {
+    if (!this.canDeleteIssue() || !issue) {
       return;
     }
     this.issueService.delete(issue.key).subscribe({
@@ -571,7 +671,7 @@ export class IssueDetailPanel {
   submitComment(): void {
     const issue = this.issue();
     const body = this.newCommentBody().trim();
-    if (!issue || !body) {
+    if (!issue || !body || !this.canCommentInPanel()) {
       return;
     }
     this.postingComment.set(true);
@@ -599,7 +699,7 @@ export class IssueDetailPanel {
 
   saveComment(commentId: string): void {
     const body = this.editingCommentBody().trim();
-    if (!body) {
+    if (!body || !this.canCommentInPanel()) {
       return;
     }
     this.commentService.update(commentId, body).subscribe({
@@ -622,6 +722,9 @@ export class IssueDetailPanel {
   }
 
   deleteComment(commentId: string): void {
+    if (!this.canCommentInPanel()) {
+      return;
+    }
     this.commentService.delete(commentId).subscribe({
       next: () =>
         this.comments.update((list) => list.filter((comment) => comment.id !== commentId)),

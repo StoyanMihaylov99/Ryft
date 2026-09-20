@@ -7,6 +7,7 @@ public record WorkflowSchemeResponse(
         UUID id,
         UUID projectId,
         String name,
-        List<WorkflowStatusResponse> statuses
+        List<WorkflowStatusResponse> statuses,
+        List<WorkflowTransitionResponse> transitions
 ) {
 }

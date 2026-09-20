@@ -14,6 +14,9 @@ import com.application.ryft.issues.repository.ComponentRepository;
 import com.application.ryft.issues.repository.IssueComponentRepository;
 import com.application.ryft.issues.repository.IssueLabelRepository;
 import com.application.ryft.issues.repository.LabelRepository;
+import com.application.ryft.projects.entity.ProjectRole;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
+import com.application.ryft.workflow.dto.WorkflowStatusResponse;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -22,16 +25,24 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Everything about how {@link Issue}s carry {@link Label}s/{@link Component}s: resolving them into
- * {@link IssueResponse} (batched across a whole list response — one {@code IN} query per response,
- * same pattern as {@code CommentServiceImpl.fetchAuthors} — rather than per issue, which would be N+1
- * on every project issue list, backlog, sprint, or board request) and validating/persisting the
- * {@code labelIds}/{@code componentIds} on create/update. Shared by {@link IssueServiceImpl} and
- * {@link BoardServiceImpl} so both build the same response shape the same way.
+ * Everything about how {@link Issue}s carry {@link Label}s/{@link Component}s and their workflow status:
+ * resolving both into {@link IssueResponse} (batched across a whole list response — one {@code IN}
+ * query per response, same pattern as {@code CommentServiceImpl.fetchAuthors} — rather than per issue,
+ * which would be N+1 on every project issue list, backlog, sprint, or board request) and validating/
+ * persisting the {@code labelIds}/{@code componentIds} on create/update. Shared by {@link IssueServiceImpl}
+ * and {@link BoardServiceImpl} so both build the same response shape the same way.
  *
  * <p>Labels/components are modeled as their own join-row entities ({@link IssueLabel}/
  * {@link IssueComponent}) with plain {@code issueId}/{@code labelId} columns rather than a
  * {@code @ManyToMany @JoinTable} on {@link Issue} — see {@link IssueLabel}'s javadoc for why.
+ *
+ * <p>{@code toResponses} also backfills {@code Issue.workflowStatusId} for any row that predates that
+ * column (matching the legacy {@code IssueStatus} enum's name to a same-category {@code WorkflowStatus}
+ * — the same enum-name bridge {@code issues.service.BoardServiceImpl} used before Phase 4) and computes
+ * {@code callerCanEdit} per issue from the caller's project role plus assignee/reporter involvement. Since
+ * the backfill is a real write, every caller of this class that can reach a null
+ * {@code workflowStatusId} must not be {@code @Transactional(readOnly = true)} — see ARCHITECTURE.md's
+ * "readOnly + transitive lazy write" note.
  */
 @org.springframework.stereotype.Component
 class IssueLabelingService {
@@ -40,31 +51,83 @@ class IssueLabelingService {
     private final LabelRepository labelRepository;
     private final IssueComponentRepository issueComponentRepository;
     private final ComponentRepository componentRepository;
+    private final IssueWorkflowAccess workflowAccess;
 
     IssueLabelingService(IssueLabelRepository issueLabelRepository, LabelRepository labelRepository,
-            IssueComponentRepository issueComponentRepository, ComponentRepository componentRepository) {
+            IssueComponentRepository issueComponentRepository, ComponentRepository componentRepository,
+            IssueWorkflowAccess workflowAccess) {
         this.issueLabelRepository = issueLabelRepository;
         this.labelRepository = labelRepository;
         this.issueComponentRepository = issueComponentRepository;
         this.componentRepository = componentRepository;
+        this.workflowAccess = workflowAccess;
     }
 
-    IssueResponse toResponse(Issue issue) {
-        return toResponses(List.of(issue)).get(0);
+    IssueResponse toResponse(Issue issue, UUID callerId, String projectKey, ProjectRole callerRole) {
+        return toResponses(List.of(issue), callerId, projectKey, callerRole).get(0);
     }
 
-    List<IssueResponse> toResponses(List<Issue> issues) {
+    /** Variant for callers that already fetched the scheme (e.g. {@code IssueServiceImpl.create}), avoiding a duplicate call. */
+    IssueResponse toResponse(Issue issue, WorkflowSchemeResponse scheme, UUID callerId, ProjectRole callerRole) {
+        return toResponses(List.of(issue), scheme, callerId, callerRole).get(0);
+    }
+
+    List<IssueResponse> toResponses(List<Issue> issues, UUID callerId, String projectKey, ProjectRole callerRole) {
         if (issues.isEmpty()) {
             return List.of();
         }
+        WorkflowSchemeResponse scheme = workflowAccess.requireScheme(callerId, projectKey);
+        return toResponses(issues, scheme, callerId, callerRole);
+    }
+
+    /** Variant for callers (e.g. {@code BoardServiceImpl}) that already fetched the scheme for their own purposes, avoiding a duplicate call. */
+    List<IssueResponse> toResponses(List<Issue> issues, WorkflowSchemeResponse scheme, UUID callerId, ProjectRole callerRole) {
+        if (issues.isEmpty()) {
+            return List.of();
+        }
+        issues.forEach(issue -> backfillWorkflowStatusIfMissing(issue, scheme));
+        Map<UUID, WorkflowStatusResponse> statusesById = scheme.statuses().stream()
+                .collect(Collectors.toMap(WorkflowStatusResponse::id, status -> status));
+
         List<UUID> issueIds = issues.stream().map(Issue::getId).toList();
         Map<UUID, List<LabelResponse>> labelsByIssueId = labelsByIssueId(issueIds);
         Map<UUID, List<ComponentResponse>> componentsByIssueId = componentsByIssueId(issueIds);
         return issues.stream()
-                .map(issue -> IssueResponse.from(issue,
+                .map(issue -> IssueResponse.from(issue, statusesById.get(issue.getWorkflowStatusId()),
                         labelsByIssueId.getOrDefault(issue.getId(), List.of()),
-                        componentsByIssueId.getOrDefault(issue.getId(), List.of())))
+                        componentsByIssueId.getOrDefault(issue.getId(), List.of()),
+                        callerCanEdit(callerRole, callerId, issue)))
                 .toList();
+    }
+
+    /** Owner/Admin always; Member only when they're the issue's assignee or reporter; Viewer never. */
+    private boolean callerCanEdit(ProjectRole callerRole, UUID callerId, Issue issue) {
+        if (callerRole == ProjectRole.OWNER || callerRole == ProjectRole.ADMIN) {
+            return true;
+        }
+        return callerRole == ProjectRole.MEMBER
+                && (callerId.equals(issue.getAssigneeId()) || callerId.equals(issue.getReporterId()));
+    }
+
+    /**
+     * Backfills {@code Issue.workflowStatusId} in place for a legacy row that predates that column,
+     * matching its old fixed {@code IssueStatus} enum name to a same-category {@code WorkflowStatus} in
+     * the scheme. Package-private (not just used internally by {@code toResponses}): also called
+     * directly by {@code IssueServiceImpl.changeStatus}/{@code moveUnfinishedIssuesToBacklog}, which need
+     * a resolved id to compare against *before* building a response.
+     */
+    void backfillWorkflowStatusIfMissing(Issue issue, WorkflowSchemeResponse scheme) {
+        if (issue.getWorkflowStatusId() == null) {
+            issue.setWorkflowStatusId(resolveStatusIdForLegacyEnum(issue, scheme));
+        }
+    }
+
+    private UUID resolveStatusIdForLegacyEnum(Issue issue, WorkflowSchemeResponse scheme) {
+        return scheme.statuses().stream()
+                .filter(status -> status.category().name().equals(issue.getStatus().name()))
+                .map(WorkflowStatusResponse::id)
+                .findFirst()
+                .orElseGet(() -> scheme.statuses().get(0).id());
     }
 
     /**

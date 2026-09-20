@@ -21,6 +21,10 @@ import com.application.ryft.issues.repository.ComponentRepository;
 import com.application.ryft.issues.repository.IssueComponentRepository;
 import com.application.ryft.issues.repository.IssueLabelRepository;
 import com.application.ryft.issues.repository.LabelRepository;
+import com.application.ryft.projects.entity.ProjectRole;
+import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
+import com.application.ryft.workflow.dto.WorkflowStatusResponse;
+import com.application.ryft.workflow.entity.StatusCategory;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,14 +50,24 @@ class IssueLabelingServiceTest {
     @Mock
     private ComponentRepository componentRepository;
 
+    @Mock
+    private IssueWorkflowAccess issueWorkflowAccess;
+
     private IssueLabelingService issueLabelingService;
 
     private final UUID projectId = UUID.randomUUID();
+    private final UUID callerId = UUID.randomUUID();
+    private final UUID todoStatusId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
         issueLabelingService = new IssueLabelingService(issueLabelRepository, labelRepository,
-                issueComponentRepository, componentRepository);
+                issueComponentRepository, componentRepository, issueWorkflowAccess);
+    }
+
+    private WorkflowSchemeResponse scheme() {
+        return new WorkflowSchemeResponse(UUID.randomUUID(), projectId, "Default Workflow",
+                List.of(new WorkflowStatusResponse(todoStatusId, "To Do", StatusCategory.TODO, 0)), List.of());
     }
 
     private Issue issueWithId() {
@@ -187,14 +201,38 @@ class IssueLabelingServiceTest {
                 .thenReturn(List.of(new IssueComponent(issue.getId(), component.getId())));
         when(componentRepository.findAllById(any())).thenReturn(List.of(component));
 
-        IssueResponse result = issueLabelingService.toResponse(issue);
+        IssueResponse result = issueLabelingService.toResponse(issue, scheme(), callerId, ProjectRole.OWNER);
 
         assertThat(result.labels()).extracting("name").containsExactly("Bug");
         assertThat(result.components()).extracting("name").containsExactly("Backend");
+        assertThat(result.statusId()).isEqualTo(todoStatusId);
     }
 
     @Test
     void toResponsesReturnsEmptyListForNoIssues() {
-        assertThat(issueLabelingService.toResponses(List.of())).isEmpty();
+        assertThat(issueLabelingService.toResponses(List.of(), scheme(), callerId, ProjectRole.OWNER)).isEmpty();
+    }
+
+    @Test
+    void toResponseComputesCallerCanEditForInvolvedMember() {
+        Issue issue = issueWithId();
+        ReflectionTestUtils.setField(issue, "assigneeId", callerId);
+        when(issueLabelRepository.findAllByIssueIdIn(List.of(issue.getId()))).thenReturn(List.of());
+        when(issueComponentRepository.findAllByIssueIdIn(List.of(issue.getId()))).thenReturn(List.of());
+
+        IssueResponse result = issueLabelingService.toResponse(issue, scheme(), callerId, ProjectRole.MEMBER);
+
+        assertThat(result.callerCanEdit()).isTrue();
+    }
+
+    @Test
+    void toResponseComputesCallerCanEditFalseForUninvolvedMember() {
+        Issue issue = issueWithId();
+        when(issueLabelRepository.findAllByIssueIdIn(List.of(issue.getId()))).thenReturn(List.of());
+        when(issueComponentRepository.findAllByIssueIdIn(List.of(issue.getId()))).thenReturn(List.of());
+
+        IssueResponse result = issueLabelingService.toResponse(issue, scheme(), callerId, ProjectRole.MEMBER);
+
+        assertThat(result.callerCanEdit()).isFalse();
     }
 }

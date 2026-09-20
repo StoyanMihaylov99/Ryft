@@ -1,5 +1,5 @@
 <div class="app-shell">
-  <app-sidebar />
+  <app-sidebar [myRole]="myRole()" />
   <div class="app-content">
     <div class="board-page">
       <div class="board-header">
@@ -8,18 +8,7 @@
           <h1>{{ projectKey }}</h1>
         </div>
         <div class="header-actions">
-          <a [routerLink]="['/projects', projectKey, 'sprints']" class="secondary">Sprints</a>
-          <a [routerLink]="['/projects', projectKey, 'backlog']" class="secondary">Backlog</a>
-          <a [routerLink]="['/projects', projectKey, 'sprint-board']" class="secondary"
-            >Scrum board</a
-          >
-          <button type="button" class="secondary" (click)="toggleMembersPanel()">
-            {{ showMembersPanel() ? 'Close' : 'Members' }}
-          </button>
           @if (canManageIssues()) {
-            <button type="button" class="secondary" (click)="toggleLabelsPanel()">
-              {{ showLabelsPanel() ? 'Close' : 'Labels & components' }}
-            </button>
             <button type="button" class="submit" (click)="toggleCreateForm()">
               {{ showCreateForm() ? 'Cancel' : '+ Create issue' }}
             </button>
@@ -33,7 +22,12 @@
 
       @if (showMembersPanel()) {
         <div class="card members-panel">
-          <h2>Members</h2>
+          <div class="panel-heading">
+            <h2>Members</h2>
+            <button type="button" class="panel-close-btn" (click)="toggleMembersPanel()">
+              Close
+            </button>
+          </div>
 
           @if (memberError()) {
             <div class="banner" role="alert">{{ memberError() }}</div>
@@ -95,7 +89,12 @@
 
       @if (showLabelsPanel() && canManageIssues()) {
         <div class="card labels-panel">
-          <h2>Labels</h2>
+          <div class="panel-heading">
+            <h2>Labels</h2>
+            <button type="button" class="panel-close-btn" (click)="toggleLabelsPanel()">
+              Close
+            </button>
+          </div>
 
           @if (labelError()) {
             <div class="banner" role="alert">{{ labelError() }}</div>
@@ -200,6 +199,164 @@
         </div>
       }
 
+      @if (showWorkflowPanel() && canManageWorkflow()) {
+        <div class="card workflow-panel">
+          <div class="panel-heading">
+            <h2>Statuses</h2>
+            <button type="button" class="panel-close-btn" (click)="toggleWorkflowPanel()">
+              Close
+            </button>
+          </div>
+
+          @if (workflowError()) {
+            <div class="banner" role="alert">{{ workflowError() }}</div>
+          }
+
+          @if (workflowLoading()) {
+            <p class="empty-state">Loading workflow…</p>
+          } @else if (workflowScheme(); as scheme) {
+            <ul class="chip-manage-list">
+              @for (status of sortedWorkflowStatuses(); track status.id; let first = $first; let last = $last) {
+                <li class="chip-manage-row status-row">
+                  <div class="reorder-buttons">
+                    <button
+                      type="button"
+                      class="reorder-btn"
+                      [disabled]="first || savingWorkflow()"
+                      [attr.aria-label]="'Move ' + status.name + ' up'"
+                      (click)="moveWorkflowStatus(status.id, -1)"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      class="reorder-btn"
+                      [disabled]="last || savingWorkflow()"
+                      [attr.aria-label]="'Move ' + status.name + ' down'"
+                      (click)="moveWorkflowStatus(status.id, 1)"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                  <label class="visually-hidden" [attr.for]="'status-name-' + status.id"
+                    >Name for {{ status.name }}</label
+                  >
+                  <input
+                    type="text"
+                    [id]="'status-name-' + status.id"
+                    [value]="status.name"
+                    [disabled]="savingWorkflow()"
+                    (blur)="renameWorkflowStatus(status.id, $any($event.target).value)"
+                  />
+                  <label class="visually-hidden" [attr.for]="'status-category-' + status.id"
+                    >Category for {{ status.name }}</label
+                  >
+                  <select
+                    class="role-select"
+                    [id]="'status-category-' + status.id"
+                    [value]="status.category"
+                    [disabled]="savingWorkflow()"
+                    (change)="recategorizeWorkflowStatus(status.id, $any($event.target).value)"
+                  >
+                    @for (category of statusCategories; track category) {
+                      <option [value]="category">{{ category }}</option>
+                    }
+                  </select>
+                  <button
+                    type="button"
+                    class="remove-btn"
+                    [disabled]="savingWorkflow()"
+                    (click)="removeWorkflowStatus(status.id)"
+                  >
+                    Remove
+                  </button>
+                </li>
+              }
+            </ul>
+
+            <form class="chip-add-form" (submit)="$event.preventDefault(); submitNewWorkflowStatus()">
+              <label class="visually-hidden" for="new-status-name">New status name</label>
+              <input
+                id="new-status-name"
+                type="text"
+                placeholder="Status name…"
+                [value]="newStatusName()"
+                (input)="newStatusName.set($any($event.target).value)"
+              />
+              <label class="visually-hidden" for="new-status-category">New status category</label>
+              <select
+                class="role-select"
+                id="new-status-category"
+                [value]="newStatusCategory()"
+                (change)="newStatusCategory.set($any($event.target).value)"
+              >
+                @for (category of statusCategories; track category) {
+                  <option [value]="category">{{ category }}</option>
+                }
+              </select>
+              <button
+                type="submit"
+                class="submit"
+                [disabled]="savingWorkflow() || !newStatusName().trim()"
+              >
+                {{ savingWorkflow() ? 'Adding…' : 'Add status' }}
+              </button>
+            </form>
+
+            <h2 class="transitions-heading">Transitions</h2>
+            <p class="transitions-hint">
+              Which status changes are allowed. A status can always move to itself; a brand-new
+              status must be saved above before it can appear here.
+            </p>
+
+            <table class="transition-matrix">
+              <caption class="visually-hidden">
+                Legal status transitions, from row status to column status
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">From \ To</th>
+                  @for (toStatus of sortedWorkflowStatuses(); track toStatus.id) {
+                    <th scope="col">{{ toStatus.name }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (fromStatus of sortedWorkflowStatuses(); track fromStatus.id) {
+                  <tr>
+                    <th scope="row">{{ fromStatus.name }}</th>
+                    @for (toStatus of sortedWorkflowStatuses(); track toStatus.id) {
+                      <td>
+                        @if (fromStatus.id === toStatus.id) {
+                          <input type="checkbox" checked disabled aria-label="Always legal" />
+                        } @else {
+                          <input
+                            type="checkbox"
+                            [checked]="isTransitionChecked(fromStatus.id, toStatus.id)"
+                            [disabled]="savingWorkflow()"
+                            [attr.aria-label]="fromStatus.name + ' to ' + toStatus.name"
+                            (change)="toggleDraftTransition(fromStatus.id, toStatus.id)"
+                          />
+                        }
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+
+            <button
+              type="button"
+              class="submit"
+              [disabled]="savingWorkflow() || !transitionsDirty()"
+              (click)="saveTransitions()"
+            >
+              {{ savingWorkflow() ? 'Saving…' : 'Save transitions' }}
+            </button>
+          }
+        </div>
+      }
+
       @if (showCreateForm() && canManageIssues()) {
         <div class="card create-card">
           <form [formGroup]="createForm" (ngSubmit)="submitCreate()">
@@ -269,83 +426,86 @@
         </div>
       }
 
-      @if (labels().length || components().length) {
-        <div class="board-filters">
-          <label class="filter-field">
-            Filter by label
-            <select
-              [value]="labelFilter() ?? ''"
-              (change)="setLabelFilter($any($event.target).value || null)"
-            >
-              <option value="">All labels</option>
-              @for (label of labels(); track label.id) {
-                <option [value]="label.id">{{ label.name }}</option>
-              }
-            </select>
-          </label>
-          <label class="filter-field">
-            Filter by component
-            <select
-              [value]="componentFilter() ?? ''"
-              (change)="setComponentFilter($any($event.target).value || null)"
-            >
-              <option value="">All components</option>
-              @for (component of components(); track component.id) {
-                <option [value]="component.id">{{ component.name }}</option>
-              }
-            </select>
-          </label>
-        </div>
-      }
-
-      @if (loading()) {
-        <p class="empty-state">Loading board…</p>
-      } @else if (board(); as boardValue) {
-        <div class="board">
-          @for (column of boardValue.columns; track column.statusId) {
-            <div class="column">
-              <h2>
-                {{ column.name }}
-                <span class="count">{{
-                  isFiltering() ? visibleIssueCount(column) : column.issues.length
-                }}</span>
-              </h2>
-              <div
-                cdkDropList
-                [id]="columnListId(column)"
-                [cdkDropListData]="column.issues"
-                [cdkDropListConnectedTo]="listIds()"
-                (cdkDropListDropped)="drop($event, column)"
-                class="issue-list"
+      @if (!showingPanel()) {
+        @if (labels().length || components().length) {
+          <div class="board-filters">
+            <label class="filter-field">
+              Filter by label
+              <select
+                [value]="labelFilter() ?? ''"
+                (change)="setLabelFilter($any($event.target).value || null)"
               >
-                @for (issue of column.issues; track issue.id) {
-                  <button
-                    type="button"
-                    class="issue-card"
-                    [class.filtered-out]="!issueMatchesFilter(issue)"
-                    cdkDrag
-                    [cdkDragDisabled]="isFiltering()"
-                    (click)="openIssue(issue.key)"
-                  >
-                    <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
-                  </button>
-                } @empty {
-                  <p class="column-empty">
-                    No issues yet.
-                    @if (column.category === 'TODO' && canManageIssues()) {
-                      <button type="button" class="empty-cta" (click)="toggleCreateForm()">
-                        Create the first issue
-                      </button>
-                    }
-                  </p>
+                <option value="">All labels</option>
+                @for (label of labels(); track label.id) {
+                  <option [value]="label.id">{{ label.name }}</option>
                 }
-                @if (column.issues.length > 0 && visibleIssueCount(column) === 0) {
-                  <p class="column-empty">No issues match the current filter.</p>
+              </select>
+            </label>
+            <label class="filter-field">
+              Filter by component
+              <select
+                [value]="componentFilter() ?? ''"
+                (change)="setComponentFilter($any($event.target).value || null)"
+              >
+                <option value="">All components</option>
+                @for (component of components(); track component.id) {
+                  <option [value]="component.id">{{ component.name }}</option>
                 }
+              </select>
+            </label>
+          </div>
+        }
+
+        @if (loading()) {
+          <p class="empty-state">Loading board…</p>
+        } @else if (board(); as boardValue) {
+          <div class="board">
+            @for (column of boardValue.columns; track column.statusId) {
+              <div class="column">
+                <h2>
+                  {{ column.name }}
+                  <span class="count">{{
+                    isFiltering() ? visibleIssueCount(column) : column.issues.length
+                  }}</span>
+                </h2>
+                <div
+                  cdkDropList
+                  [id]="columnListId(column)"
+                  [cdkDropListData]="column.issues"
+                  [cdkDropListConnectedTo]="listIds()"
+                  [cdkDropListDisabled]="!canDragStatus()"
+                  (cdkDropListDropped)="drop($event, column)"
+                  class="issue-list"
+                >
+                  @for (issue of column.issues; track issue.id) {
+                    <button
+                      type="button"
+                      class="issue-card"
+                      [class.filtered-out]="!issueMatchesFilter(issue)"
+                      cdkDrag
+                      [cdkDragDisabled]="isFiltering() || !canDragStatus()"
+                      (click)="openIssue(issue.key)"
+                    >
+                      <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
+                    </button>
+                  } @empty {
+                    <p class="column-empty">
+                      No issues yet.
+                      @if (column.category === 'TODO' && canManageIssues()) {
+                        <button type="button" class="empty-cta" (click)="toggleCreateForm()">
+                          Create the first issue
+                        </button>
+                      }
+                    </p>
+                  }
+                  @if (column.issues.length > 0 && visibleIssueCount(column) === 0) {
+                    <p class="column-empty">No issues match the current filter.</p>
+                  }
+                </div>
               </div>
-            </div>
-          }
-        </div>
+            }
+          </div>
+        }
       }
     </div>
   </div>
@@ -355,7 +515,7 @@
   <app-issue-detail-panel
     [issueKey]="issueKey"
     [projectKey]="projectKey"
-    [canManage]="canManageIssues()"
+    [myRole]="myRole()"
     (closed)="closePanel()"
     (updated)="onIssueUpdated($event)"
     (deleted)="onIssueDeleted($event)"

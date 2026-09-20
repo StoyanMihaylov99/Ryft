@@ -17,6 +17,7 @@ import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueType;
 import com.application.ryft.issues.exception.CommentNotFoundException;
+import com.application.ryft.issues.exception.InsufficientProjectRoleException;
 import com.application.ryft.issues.exception.IssueNotFoundException;
 import com.application.ryft.issues.exception.NotAProjectMemberException;
 import com.application.ryft.issues.exception.NotCommentAuthorException;
@@ -183,6 +184,42 @@ class CommentServiceTest {
 
         assertThatThrownBy(() -> commentService.delete(callerId, UUID.randomUUID()))
                 .isInstanceOf(NotCommentAuthorException.class);
+        verify(commentRepository, never()).delete(any(Comment.class));
+    }
+
+    @Test
+    void createRejectsViewer() {
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isViewer(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> commentService.create(callerId, "TRK-1", new CreateCommentRequest("Sneaking in")))
+                .isInstanceOf(InsufficientProjectRoleException.class);
+        verify(commentRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void updateRejectsViewerBeforeCheckingAuthorship() {
+        // The Viewer posted this comment before being downgraded — still rejected, and with the
+        // insufficient-role reason, not "not the author".
+        Comment comment = new Comment(issue, callerId, "Original");
+        when(commentRepository.findById(any(UUID.class))).thenReturn(Optional.of(comment));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isViewer(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> commentService.update(callerId, UUID.randomUUID(), new UpdateCommentRequest("Edited")))
+                .isInstanceOf(InsufficientProjectRoleException.class);
+    }
+
+    @Test
+    void deleteRejectsViewerBeforeCheckingAuthorship() {
+        Comment comment = new Comment(issue, callerId, "Original");
+        when(commentRepository.findById(any(UUID.class))).thenReturn(Optional.of(comment));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.isViewer(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> commentService.delete(callerId, UUID.randomUUID()))
+                .isInstanceOf(InsufficientProjectRoleException.class);
         verify(commentRepository, never()).delete(any(Comment.class));
     }
 }

@@ -10,7 +10,6 @@ import {
   CreateSubtaskRequest,
   EpicProgress,
   Issue,
-  IssueStatus,
   Label,
   ProjectComponent,
   UpdateComponentRequest,
@@ -88,9 +87,12 @@ export class IssueService {
     return this.http.patch<Issue>(`${environment.apiBaseUrl}/issues/${issueKey}`, request);
   }
 
-  changeStatus(issueKey: string, status: IssueStatus): Observable<Issue> {
+  /** `statusId` must resolve to a `WorkflowStatus` in the issue's project scheme, and the move from
+   *  the issue's current status must be legal per that scheme's transition graph — otherwise this
+   *  409s (`IllegalStatusTransitionException` server-side). */
+  changeStatus(issueKey: string, statusId: string): Observable<Issue> {
     return this.http.patch<Issue>(`${environment.apiBaseUrl}/issues/${issueKey}/status`, {
-      status,
+      statusId,
     });
   }
 

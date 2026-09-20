@@ -32,17 +32,24 @@ public class BurndownServiceImpl implements BurndownService {
     }
 
     /**
-     * Safe to be read-only, unlike {@link SprintBoardServiceImpl#getBoard}: this method never calls
-     * {@code WorkflowService}, the only source of the lazy-seeding write documented in
-     * {@code ARCHITECTURE.md}'s read-only-transaction section. Every call in its chain is itself
-     * read-only — {@link SprintLookupSupport#requireSprint} is a plain repository read,
-     * {@link SprintsProjectAccess#requireMembershipByProjectId} delegates to
-     * {@code ProjectService.getById} ({@code @Transactional(readOnly = true)}), and
-     * {@link IssueService#listForSprint} is itself {@code @Transactional(readOnly = true)} with no
-     * further calls out of the issues module.
+     * No longer safe to be read-only. This was originally documented as safe, unlike
+     * {@link SprintBoardServiceImpl#getBoard}, because its whole call chain —
+     * {@link SprintLookupSupport#requireSprint} (a plain repository read),
+     * {@link SprintsProjectAccess#requireMembershipByProjectId} (delegates to
+     * {@code ProjectService.getById}, {@code @Transactional(readOnly = true)}), and
+     * {@link IssueService#listForSprint} — never touched {@code WorkflowService}, the only source of the
+     * lazy-seeding write documented in {@code ARCHITECTURE.md}'s read-only-transaction section, and each
+     * link in the chain was itself read-only. That's no longer true: since Phase 4 gave {@code Issue} a
+     * {@code workflowStatusId} column, {@link IssueService#listForSprint} routes its results through
+     * {@code IssueLabelingService.toResponses}, the shared mapper that lazily backfills that column on
+     * any pre-Phase-4 row it resolves (a real write) — so {@code listForSprint} is now plain
+     * {@code @Transactional}, not read-only. Marking this method read-only would join that write into a
+     * read-only transaction — Hibernate then sets FlushMode.MANUAL for the whole call, so the backfill is
+     * staged but never flushed, silently leaving the column null forever. Same trap, same fix, as
+     * {@code issues.service.BoardServiceImpl.getBoard} and {@code BacklogServiceImpl.listBacklog}.
      */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public BurndownResponse getBurndown(UUID callerId, UUID sprintId) {
         Sprint sprint = sprintLookupSupport.requireSprint(sprintId);
         ProjectResponse project = projectAccess.requireMembershipByProjectId(callerId, sprint.getProjectId());
