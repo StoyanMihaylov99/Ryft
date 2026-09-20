@@ -118,7 +118,10 @@ h1 {
 }
 
 .create-card input,
-.create-card select {
+.create-card select,
+.invite-form input,
+.invite-form select,
+.chip-add-form input[type='text'] {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -259,18 +262,6 @@ h1 {
 .invite-form .email-field {
   flex: 1;
   min-width: 220px;
-}
-
-.invite-form input,
-.invite-form select,
-.chip-add-form input[type='text'] {
-  padding: 0.5rem 0.625rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font-size: 0.875rem;
-  font-family: inherit;
 }
 
 .create-card input:focus,
