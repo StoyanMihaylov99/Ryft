@@ -1,9 +1,0 @@
-<span class="issue-card-header">
-  <span class="issue-key">{{ issue().key }}</span>
-  <span class="issue-type-badge">{{ issue().type }}</span>
-</span>
-<p class="issue-title">{{ issue().title }}</p>
-<span class="issue-priority priority-{{ issue().priority.toLowerCase() }}">{{ issue().priority }}</span>
-@if (issue().storyPoints != null) {
-  <span class="issue-story-points-badge">{{ issue().storyPoints }} pts</span>
-}

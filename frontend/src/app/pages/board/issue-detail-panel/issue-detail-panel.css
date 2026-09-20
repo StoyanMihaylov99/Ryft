@@ -121,8 +121,7 @@ label {
 }
 
 select,
-textarea,
-.field-row input {
+textarea {
   padding: 0.5rem 0.625rem;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -135,15 +134,13 @@ textarea,
 }
 
 select:focus,
-textarea:focus,
-.field-row input:focus {
+textarea:focus {
   outline: none;
   border-color: var(--accent);
 }
 
 select:disabled,
-textarea:disabled,
-.field-row input:disabled {
+textarea:disabled {
   opacity: 0.6;
   cursor: default;
 }

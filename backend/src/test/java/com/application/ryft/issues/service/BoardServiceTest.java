@@ -62,12 +62,12 @@ class BoardServiceTest {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(workflowService.getSchemeForProject(callerId, "TRK")).thenReturn(defaultScheme());
         Issue todoIssue = new Issue(projectId, "TRK-1", IssueType.TASK, "Todo issue", null, IssuePriority.MEDIUM,
-                null, callerId, 1000.0);
+                null, callerId);
         Issue blockedIssue = new Issue(projectId, "TRK-3", IssueType.TASK, "Blocked issue", null, IssuePriority.MEDIUM,
-                null, callerId, 2000.0);
+                null, callerId);
         blockedIssue.setStatus(IssueStatus.BLOCKED);
         Issue doneIssue = new Issue(projectId, "TRK-2", IssueType.BUG, "Done issue", null, IssuePriority.MEDIUM,
-                null, callerId, 3000.0);
+                null, callerId);
         doneIssue.setStatus(IssueStatus.DONE);
         when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId))
                 .thenReturn(List.of(todoIssue, blockedIssue, doneIssue));

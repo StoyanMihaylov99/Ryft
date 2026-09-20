@@ -82,14 +82,6 @@ public class ProjectServiceImpl implements ProjectService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public ProjectResponse getById(UUID callerId, UUID projectId) {
-        Project project = requireProject(projectId);
-        requireMembership(project, callerId);
-        return toResponse(project);
-    }
-
-    @Override
     @Transactional
     public ProjectResponse update(UUID callerId, String projectKey, UpdateProjectRequest request) {
         Project project = requireProject(projectKey);
@@ -189,11 +181,6 @@ public class ProjectServiceImpl implements ProjectService {
         String key = normalizeKey(projectKey);
         return projectRepository.findByWorkspaceIdAndKey(workspaceId, key)
                 .orElseThrow(() -> new ProjectNotFoundException(key));
-    }
-
-    private Project requireProject(UUID projectId) {
-        return projectRepository.findById(projectId)
-                .orElseThrow(() -> new ProjectNotFoundException(projectId.toString()));
     }
 
     private ProjectMember requireMembership(Project project, UUID userId) {

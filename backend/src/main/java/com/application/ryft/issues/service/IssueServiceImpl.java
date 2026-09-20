@@ -18,15 +18,12 @@ import com.application.ryft.projects.dto.ProjectResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class IssueServiceImpl implements IssueService {
-
-    private static final double RANK_STEP = 1000.0;
 
     private final IssueRepository issueRepository;
     private final IssueKeySequenceRepository issueKeySequenceRepository;
@@ -53,12 +50,10 @@ public class IssueServiceImpl implements IssueService {
         IssuePriority priority = request.priority() != null ? request.priority() : IssuePriority.MEDIUM;
         String description = request.description() == null ? null : request.description().trim();
         String issueKey = nextIssueKey(project.id(), project.key());
-        double rank = nextBacklogRank(project.id());
 
-        Issue issue = new Issue(project.id(), issueKey, request.type(), request.title().trim(), description,
-                priority, request.assigneeId(), callerId, rank);
-        issue.setStoryPoints(request.storyPoints());
-        return IssueResponse.from(issueRepository.save(issue));
+        Issue issue = issueRepository.save(new Issue(project.id(), issueKey, request.type(), request.title().trim(),
+                description, priority, request.assigneeId(), callerId));
+        return IssueResponse.from(issue);
     }
 
     @Override
@@ -66,33 +61,6 @@ public class IssueServiceImpl implements IssueService {
     public List<IssueResponse> listForProject(UUID callerId, String projectKey) {
         ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         return issueRepository.findAllByProjectIdOrderByCreatedAtAsc(project.id()).stream()
-                .map(IssueResponse::from)
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<IssueResponse> listForProject(UUID callerId, String projectKey, UUID sprintId) {
-        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(project.id(), sprintId).stream()
-                .map(IssueResponse::from)
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<IssueResponse> listBacklogForProject(UUID callerId, String projectKey) {
-        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(project.id()).stream()
-                .map(IssueResponse::from)
-                .toList();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<IssueResponse> listForSprint(UUID callerId, String projectKey, UUID sprintId) {
-        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        return issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(project.id(), sprintId).stream()
                 .map(IssueResponse::from)
                 .toList();
     }
@@ -131,7 +99,6 @@ public class IssueServiceImpl implements IssueService {
         applyDescription(issue, request);
         applyPriority(issue, request);
         applyAssignee(issue, callerId, projectKey, request);
-        applyStoryPoints(issue, request);
     }
 
     private void applyTitle(Issue issue, UpdateIssueRequest request) {
@@ -159,12 +126,6 @@ public class IssueServiceImpl implements IssueService {
         }
     }
 
-    private void applyStoryPoints(Issue issue, UpdateIssueRequest request) {
-        if (request.storyPoints() != null) {
-            issue.setStoryPoints(request.storyPoints());
-        }
-    }
-
     private void setStatus(Issue issue, IssueStatus status) {
         issue.setStatus(status);
         issue.setResolvedAt(status == IssueStatus.DONE ? Instant.now() : null);
@@ -179,70 +140,6 @@ public class IssueServiceImpl implements IssueService {
         requireOwnerOrAdmin(callerId, projectKey);
         commentRepository.deleteAllByIssueId(issue.getId());
         issueRepository.delete(issue);
-    }
-
-    @Override
-    @Transactional
-    public IssueResponse moveToSprint(UUID callerId, String issueKey, UUID sprintId) {
-        Issue issue = requireIssue(issueKey);
-        String projectKey = projectKeyOf(issue);
-        projectAccess.requireMembership(callerId, projectKey);
-        requireOwnerOrAdmin(callerId, projectKey);
-
-        issue.setSprintId(sprintId);
-        return IssueResponse.from(issue);
-    }
-
-    @Override
-    @Transactional
-    public IssueResponse reorderBacklog(UUID callerId, String issueKey, String beforeIssueKey, String afterIssueKey) {
-        Issue issue = requireIssue(issueKey);
-        String projectKey = projectKeyOf(issue);
-        projectAccess.requireMembership(callerId, projectKey);
-        requireOwnerOrAdmin(callerId, projectKey);
-
-        Optional<Issue> beforeIssue = findNeighbor(beforeIssueKey);
-        Optional<Issue> afterIssue = findNeighbor(afterIssueKey);
-        issue.setBacklogRank(newBacklogRank(issue, beforeIssue, afterIssue));
-        return IssueResponse.from(issue);
-    }
-
-    @Override
-    @Transactional
-    public void moveUnfinishedIssuesToBacklog(UUID callerId, String projectKey, UUID sprintId) {
-        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
-        issueRepository.findAllByProjectIdAndSprintId(project.id(), sprintId).stream()
-                .filter(issue -> issue.getStatus() != IssueStatus.DONE)
-                .forEach(issue -> issue.setSprintId(null));
-    }
-
-    /**
-     * Midpoint-insertion ranking: splits the difference between the two neighbors an issue is dropped
-     * between, so re-ranking one issue never touches any other row. Falling off either end of the list
-     * steps by a full {@link #RANK_STEP} past the remaining neighbor instead of halving toward it,
-     * leaving room for further inserts on that side.
-     */
-    private double newBacklogRank(Issue issue, Optional<Issue> beforeIssue, Optional<Issue> afterIssue) {
-        if (beforeIssue.isPresent() && afterIssue.isPresent()) {
-            return (beforeIssue.get().getBacklogRank() + afterIssue.get().getBacklogRank()) / 2.0;
-        }
-        if (beforeIssue.isPresent()) {
-            return beforeIssue.get().getBacklogRank() + RANK_STEP;
-        }
-        if (afterIssue.isPresent()) {
-            return afterIssue.get().getBacklogRank() - RANK_STEP;
-        }
-        return issue.getBacklogRank();
-    }
-
-    private Optional<Issue> findNeighbor(String neighborKey) {
-        return neighborKey == null ? Optional.empty() : issueRepository.findByKey(normalizeKey(neighborKey));
-    }
-
-    private double nextBacklogRank(UUID projectId) {
-        return issueRepository.findFirstByProjectIdOrderByBacklogRankDesc(projectId)
-                .map(issue -> issue.getBacklogRank() + RANK_STEP)
-                .orElse(RANK_STEP);
     }
 
     private void requireOwnerOrAdmin(UUID callerId, String projectKey) {

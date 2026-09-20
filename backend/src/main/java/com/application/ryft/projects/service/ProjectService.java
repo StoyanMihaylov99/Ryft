@@ -19,8 +19,6 @@ public interface ProjectService {
 
     ProjectResponse get(UUID callerId, String projectKey);
 
-    ProjectResponse getById(UUID callerId, UUID projectId);
-
     ProjectResponse update(UUID callerId, String projectKey, UpdateProjectRequest request);
 
     /** Soft-deletes the project (sets {@code archivedAt}); Owner only. */

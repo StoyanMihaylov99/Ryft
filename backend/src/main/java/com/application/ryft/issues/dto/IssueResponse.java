@@ -18,8 +18,6 @@ public record IssueResponse(
         IssuePriority priority,
         UUID assigneeId,
         UUID reporterId,
-        UUID sprintId,
-        Integer storyPoints,
         Instant createdAt,
         Instant updatedAt,
         Instant resolvedAt
@@ -28,7 +26,7 @@ public record IssueResponse(
     public static IssueResponse from(Issue issue) {
         return new IssueResponse(issue.getId(), issue.getProjectId(), issue.getKey(), issue.getType(),
                 issue.getTitle(), issue.getDescription(), issue.getStatus(), issue.getPriority(),
-                issue.getAssigneeId(), issue.getReporterId(), issue.getSprintId(), issue.getStoryPoints(),
-                issue.getCreatedAt(), issue.getUpdatedAt(), issue.getResolvedAt());
+                issue.getAssigneeId(), issue.getReporterId(), issue.getCreatedAt(), issue.getUpdatedAt(),
+                issue.getResolvedAt());
     }
 }

@@ -68,20 +68,6 @@ public class Issue {
     @Column(name = "reporter_id", nullable = false)
     private UUID reporterId;
 
-    @Column(name = "story_points")
-    @Setter
-    private Integer storyPoints;
-
-    /** Plain id, not a JPA relation to the sprints module's Sprint entity — same pattern as projectId. Null means the issue sits in the backlog. */
-    @Column(name = "sprint_id")
-    @Setter
-    private UUID sprintId;
-
-    /** Manual ordering key for the backlog list; see IssueServiceImpl.reorderBacklog for the midpoint-insertion scheme. */
-    @Column(name = "backlog_rank", nullable = false)
-    @Setter
-    private double backlogRank;
-
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -95,7 +81,7 @@ public class Issue {
     private Instant resolvedAt;
 
     public Issue(UUID projectId, String key, IssueType type, String title, String description,
-            IssuePriority priority, UUID assigneeId, UUID reporterId, double backlogRank) {
+            IssuePriority priority, UUID assigneeId, UUID reporterId) {
         this.projectId = projectId;
         this.key = key;
         this.type = type;
@@ -105,6 +91,5 @@ public class Issue {
         this.priority = priority;
         this.assigneeId = assigneeId;
         this.reporterId = reporterId;
-        this.backlogRank = backlogRank;
     }
 }

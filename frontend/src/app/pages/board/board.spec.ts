@@ -24,13 +24,11 @@ function issue(key: string, status: Issue['status']): Issue {
     description: null,
     status,
     priority: 'MEDIUM',
-    storyPoints: null,
     assigneeId: null,
     reporterId: 'u1',
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: null,
     resolvedAt: null,
-    sprintId: null,
   };
 }
 

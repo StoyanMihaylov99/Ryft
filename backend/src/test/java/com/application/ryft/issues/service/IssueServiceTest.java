@@ -72,27 +72,12 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, null));
+                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null));
 
         assertThat(result.key()).isEqualTo("TRK-1");
         assertThat(result.status()).isEqualTo(IssueStatus.TODO);
         assertThat(result.priority()).isEqualTo(IssuePriority.MEDIUM);
         assertThat(result.reporterId()).isEqualTo(callerId);
-        assertThat(result.storyPoints()).isNull();
-    }
-
-    @Test
-    void createSetsStoryPointsWhenProvided() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
-        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
-
-        IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, 5));
-
-        assertThat(result.storyPoints()).isEqualTo(5);
     }
 
     @Test
@@ -106,7 +91,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Second issue", null, IssuePriority.HIGH, null, null));
+                new CreateIssueRequest(IssueType.TASK, "Second issue", null, IssuePriority.HIGH, null));
 
         assertThat(result.key()).isEqualTo("TRK-2");
         assertThat(result.priority()).isEqualTo(IssuePriority.HIGH);
@@ -118,7 +103,7 @@ class IssueServiceTest {
                 .thenThrow(new com.application.ryft.issues.exception.ProjectNotFoundException("TRK"));
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
                 .isInstanceOf(com.application.ryft.issues.exception.ProjectNotFoundException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -128,7 +113,7 @@ class IssueServiceTest {
         when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
                 .isInstanceOf(NotAProjectMemberException.class);
     }
 
@@ -138,7 +123,7 @@ class IssueServiceTest {
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, null)))
                 .isInstanceOf(InsufficientProjectRoleException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -151,7 +136,7 @@ class IssueServiceTest {
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, outsiderId, null)))
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, outsiderId)))
                 .isInstanceOf(AssigneeNotAProjectMemberException.class);
         verify(issueRepository, never()).save(any());
     }
@@ -167,7 +152,7 @@ class IssueServiceTest {
         when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
 
         IssueResponse result = issueService.create(callerId, "TRK",
-                new CreateIssueRequest(IssueType.TASK, "Title", null, null, assigneeId, null));
+                new CreateIssueRequest(IssueType.TASK, "Title", null, null, assigneeId));
 
         assertThat(result.assigneeId()).isEqualTo(assigneeId);
     }
@@ -182,7 +167,7 @@ class IssueServiceTest {
 
     @Test
     void getRequiresCallerToBeAProjectMember() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
@@ -193,13 +178,13 @@ class IssueServiceTest {
     @Test
     void updateAppliesProvidedFieldsOnly() {
         Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Original", "orig desc", IssuePriority.LOW, null,
-                callerId, 1000.0);
+                callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
 
         IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null, null));
+                new UpdateIssueRequest("New title", null, IssuePriority.HIGH, null));
 
         assertThat(result.title()).isEqualTo("New title");
         assertThat(result.description()).isEqualTo("orig desc");
@@ -207,49 +192,20 @@ class IssueServiceTest {
     }
 
     @Test
-    void updateSetsStoryPointsWhenProvided() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Original", "orig desc", IssuePriority.LOW, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, null, 8));
-
-        assertThat(result.storyPoints()).isEqualTo(8);
-    }
-
-    @Test
-    void updateWithNullStoryPointsLeavesExistingValueUnchanged() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Original", "orig desc", IssuePriority.LOW, null,
-                callerId, 1000.0);
-        issue.setStoryPoints(3);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        IssueResponse result = issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, null, null, null));
-
-        assertThat(result.storyPoints()).isEqualTo(3);
-    }
-
-    @Test
     void updateRejectsCallerWhoIsNotOwnerOrAdmin() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest("New title", null, null, null, null)))
+                new UpdateIssueRequest("New title", null, null, null)))
                 .isInstanceOf(InsufficientProjectRoleException.class);
     }
 
     @Test
     void updateRejectsAssigneeNotAProjectMember() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
@@ -257,13 +213,13 @@ class IssueServiceTest {
         when(projectAccess.isMember(callerId, "TRK", outsiderId)).thenReturn(false);
 
         assertThatThrownBy(() -> issueService.update(callerId, "TRK-1",
-                new UpdateIssueRequest(null, null, null, outsiderId, null)))
+                new UpdateIssueRequest(null, null, null, outsiderId)))
                 .isInstanceOf(AssigneeNotAProjectMemberException.class);
     }
 
     @Test
     void changeStatusToDoneSetsResolvedAt() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
 
@@ -278,7 +234,7 @@ class IssueServiceTest {
 
     @Test
     void changeStatusAwayFromDoneClearsResolvedAt() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         issue.setStatus(IssueStatus.DONE);
         issue.setResolvedAt(Instant.now());
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
@@ -292,7 +248,7 @@ class IssueServiceTest {
 
     @Test
     void changeStatusRequiresCallerToBeAProjectMember() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
 
@@ -303,7 +259,7 @@ class IssueServiceTest {
 
     @Test
     void deleteRemovesTheIssue() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
@@ -318,7 +274,7 @@ class IssueServiceTest {
 
     @Test
     void deleteRejectsCallerWhoIsNotOwnerOrAdmin() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
         when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
@@ -332,230 +288,12 @@ class IssueServiceTest {
     @Test
     void listForProjectReturnsProjectsIssues() {
         when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null, callerId, 1000.0);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null, callerId);
         when(issueRepository.findAllByProjectIdOrderByCreatedAtAsc(projectId)).thenReturn(List.of(issue));
 
         List<IssueResponse> result = issueService.listForProject(callerId, "TRK");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).key()).isEqualTo("TRK-1");
-    }
-
-    @Test
-    void listForProjectFilteredBySprintDelegatesToSprintScopedQuery() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        UUID sprintId = UUID.randomUUID();
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        issue.setSprintId(sprintId);
-        when(issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(projectId, sprintId))
-                .thenReturn(List.of(issue));
-
-        List<IssueResponse> result = issueService.listForProject(callerId, "TRK", sprintId);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).sprintId()).isEqualTo(sprintId);
-    }
-
-    @Test
-    void listBacklogForProjectReturnsIssuesWithNoSprintOrderedByRank() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findAllByProjectIdAndSprintIdIsNullOrderByBacklogRankAsc(projectId))
-                .thenReturn(List.of(issue));
-
-        List<IssueResponse> result = issueService.listBacklogForProject(callerId, "TRK");
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).sprintId()).isNull();
-    }
-
-    @Test
-    void listForSprintReturnsAllIssuesRegardlessOfStatus() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        UUID sprintId = UUID.randomUUID();
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        issue.setSprintId(sprintId);
-        issue.setStatus(IssueStatus.DONE);
-        when(issueRepository.findAllByProjectIdAndSprintIdOrderByCreatedAtAsc(projectId, sprintId))
-                .thenReturn(List.of(issue));
-
-        List<IssueResponse> result = issueService.listForSprint(callerId, "TRK", sprintId);
-
-        assertThat(result).hasSize(1);
-        assertThat(result.get(0).status()).isEqualTo(IssueStatus.DONE);
-    }
-
-    @Test
-    void createAssignsFirstBacklogRankWhenProjectHasNoOtherIssues() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
-        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(issueRepository.findFirstByProjectIdOrderByBacklogRankDesc(projectId)).thenReturn(Optional.empty());
-        ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
-        when(issueRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
-
-        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "First", null, null, null, null));
-
-        assertThat(captor.getValue().getBacklogRank()).isEqualTo(1000.0);
-    }
-
-    @Test
-    void createAssignsSecondBacklogRankAfterTheExistingHighestRank() {
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
-        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
-        Issue existing = new Issue(projectId, "TRK-1", IssueType.BUG, "First", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findFirstByProjectIdOrderByBacklogRankDesc(projectId)).thenReturn(Optional.of(existing));
-        ArgumentCaptor<Issue> captor = ArgumentCaptor.forClass(Issue.class);
-        when(issueRepository.save(captor.capture())).thenAnswer(inv -> inv.getArgument(0));
-
-        issueService.create(callerId, "TRK", new CreateIssueRequest(IssueType.BUG, "Second", null, null, null, null));
-
-        assertThat(captor.getValue().getBacklogRank()).isEqualTo(2000.0);
-    }
-
-    @Test
-    void moveToSprintAssignsSprint() {
-        UUID sprintId = UUID.randomUUID();
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        IssueResponse result = issueService.moveToSprint(callerId, "TRK-1", sprintId);
-
-        assertThat(result.sprintId()).isEqualTo(sprintId);
-    }
-
-    @Test
-    void moveToSprintWithNullSprintIdClearsSprint() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        issue.setSprintId(UUID.randomUUID());
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        IssueResponse result = issueService.moveToSprint(callerId, "TRK-1", null);
-
-        assertThat(result.sprintId()).isNull();
-    }
-
-    @Test
-    void moveToSprintRejectsCallerWhoIsNotOwnerOrAdmin() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
-
-        assertThatThrownBy(() -> issueService.moveToSprint(callerId, "TRK-1", UUID.randomUUID()))
-                .isInstanceOf(InsufficientProjectRoleException.class);
-        assertThat(issue.getSprintId()).isNull();
-    }
-
-    @Test
-    void reorderBacklogWithBothNeighborsUsesMidpoint() {
-        Issue issue = new Issue(projectId, "TRK-3", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 3000.0);
-        Issue before = new Issue(projectId, "TRK-1", IssueType.BUG, "Before", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        Issue after = new Issue(projectId, "TRK-2", IssueType.BUG, "After", null, IssuePriority.MEDIUM, null,
-                callerId, 2000.0);
-        when(issueRepository.findByKey("TRK-3")).thenReturn(Optional.of(issue));
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(before));
-        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(after));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        IssueResponse result = issueService.reorderBacklog(callerId, "TRK-3", "TRK-1", "TRK-2");
-
-        assertThat(result).isNotNull();
-        assertThat(issue.getBacklogRank()).isEqualTo(1500.0);
-    }
-
-    @Test
-    void reorderBacklogWithOnlyBeforeStepsPastIt() {
-        Issue issue = new Issue(projectId, "TRK-2", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 500.0);
-        Issue before = new Issue(projectId, "TRK-1", IssueType.BUG, "Before", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(issue));
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(before));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        issueService.reorderBacklog(callerId, "TRK-2", "TRK-1", null);
-
-        assertThat(issue.getBacklogRank()).isEqualTo(2000.0);
-    }
-
-    @Test
-    void reorderBacklogWithOnlyAfterStepsBeforeIt() {
-        Issue issue = new Issue(projectId, "TRK-2", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 5000.0);
-        Issue after = new Issue(projectId, "TRK-1", IssueType.BUG, "After", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-2")).thenReturn(Optional.of(issue));
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(after));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        issueService.reorderBacklog(callerId, "TRK-2", null, "TRK-1");
-
-        assertThat(issue.getBacklogRank()).isEqualTo(0.0);
-    }
-
-    @Test
-    void reorderBacklogWithNeitherNeighborLeavesRankUnchanged() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
-
-        issueService.reorderBacklog(callerId, "TRK-1", null, null);
-
-        assertThat(issue.getBacklogRank()).isEqualTo(1000.0);
-    }
-
-    @Test
-    void reorderBacklogRejectsCallerWhoIsNotOwnerOrAdmin() {
-        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
-                callerId, 1000.0);
-        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(false);
-
-        assertThatThrownBy(() -> issueService.reorderBacklog(callerId, "TRK-1", null, null))
-                .isInstanceOf(InsufficientProjectRoleException.class);
-        assertThat(issue.getBacklogRank()).isEqualTo(1000.0);
-    }
-
-    @Test
-    void moveUnfinishedIssuesToBacklogClearsSprintOnlyOnNonDoneIssues() {
-        UUID sprintId = UUID.randomUUID();
-        Issue unfinished = new Issue(projectId, "TRK-1", IssueType.BUG, "Unfinished", null, IssuePriority.MEDIUM,
-                null, callerId, 1000.0);
-        unfinished.setSprintId(sprintId);
-        Issue done = new Issue(projectId, "TRK-2", IssueType.BUG, "Done", null, IssuePriority.MEDIUM, null, callerId,
-                2000.0);
-        done.setSprintId(sprintId);
-        done.setStatus(IssueStatus.DONE);
-        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
-        when(issueRepository.findAllByProjectIdAndSprintId(projectId, sprintId)).thenReturn(List.of(unfinished, done));
-
-        issueService.moveUnfinishedIssuesToBacklog(callerId, "TRK", sprintId);
-
-        assertThat(unfinished.getSprintId()).isNull();
-        assertThat(done.getSprintId()).isEqualTo(sprintId);
-        verify(projectAccess, never()).isOwnerOrAdmin(any(), any());
     }
 }

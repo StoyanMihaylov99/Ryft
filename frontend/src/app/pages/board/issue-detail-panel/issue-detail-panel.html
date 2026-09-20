@@ -58,16 +58,6 @@
             <option value="HIGHEST">Highest</option>
           </select>
         </label>
-        <label>
-          Story points
-          <input
-            type="number"
-            min="0"
-            [value]="draftStoryPoints()"
-            [disabled]="!canManage()"
-            (input)="updateDraftStoryPoints($any($event.target).value === '' ? null : $any($event.target).valueAsNumber)"
-          />
-        </label>
       </div>
 
       <label class="description-label">
