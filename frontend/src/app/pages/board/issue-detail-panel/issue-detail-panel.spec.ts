@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { ActivityEvent } from '../../../core/activity/models';
 import { Comment } from '../../../core/comment/models';
 import { EpicProgress, Issue, Label, ProjectComponent } from '../../../core/issue/models';
 import { WorkflowScheme } from '../../../core/workflow/models';
@@ -112,16 +113,18 @@ describe('IssueDetailPanel', () => {
 
   /** A STORY/TASK/BUG issue (the default `issue()` type) also triggers a subtasks fetch, and an
    *  EPIC triggers a progress fetch — both flushed here with an empty/zeroed default unless the
-   *  caller passes one. */
+   *  caller passes one. Every issue type unconditionally also triggers an activity fetch. */
   function flushLoad(
     issueValue: Issue,
     comments: Comment[] = [],
     subtasks: Issue[] = [],
     epicProgress: EpicProgress = { totalCount: 0, doneCount: 0, percentDone: 0 },
+    activity: ActivityEvent[] = [],
   ): void {
     const key = issueValue.key;
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issueValue);
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush(comments);
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/activity`).flush(activity);
     if (issueValue.type === 'STORY' || issueValue.type === 'TASK' || issueValue.type === 'BUG') {
       httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/subtasks`).flush(subtasks);
     }
@@ -705,6 +708,7 @@ describe('IssueDetailPanel', () => {
     const key = 'TRK-1';
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issue({ type: 'EPIC' }));
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/activity`).flush([]);
     httpMock
       .expectOne(`${environment.apiBaseUrl}/issues/${key}/progress`)
       .flush('Server error', { status: 500, statusText: 'Server Error' });
@@ -881,6 +885,7 @@ describe('IssueDetailPanel', () => {
 
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2`).flush(subtask);
     httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/comments`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/issues/TRK-2/activity`).flush([]);
 
     expect(component.issue()?.key).toBe('TRK-2');
     expect(component.issue()?.title).toBe('Sub one');
@@ -999,6 +1004,77 @@ describe('IssueDetailPanel', () => {
       component.toggleDraftLabel('l1');
 
       expect(component.isLabelSelected('l1')).toBe(false);
+    });
+  });
+
+  describe('activity feed', () => {
+    function activityEvent(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
+      return {
+        id: 'e1',
+        projectId: 'p1',
+        issueId: 'i1',
+        eventType: 'issue.status_changed',
+        actorId: 'u1',
+        timestamp: '2024-01-01T00:00:00Z',
+        payload: { from_status: 'To Do', to_status: 'Done' },
+        ...overrides,
+      };
+    }
+
+    it('loads activity for every issue type, unlike the type-gated subtasks/progress sections', () => {
+      flushLoad(issue({ type: 'EPIC' }), [], [], undefined, [activityEvent()]);
+
+      expect(component.activity()).toHaveLength(1);
+      expect(component.loadingActivity()).toBe(false);
+    });
+
+    it('renders each activity event using activityText', () => {
+      flushLoad(issue(), [], [], undefined, [activityEvent()]);
+      fixture.detectChanges();
+
+      const row = fixture.debugElement.query(By.css('.activity-row'));
+      expect(row.nativeElement.textContent).toContain('changed the status from To Do to Done');
+    });
+
+    it('shows an empty state when there is no activity', () => {
+      flushLoad(issue());
+      fixture.detectChanges();
+
+      const activitySection = fixture.debugElement.query(By.css('.activity'));
+      expect(activitySection.nativeElement.textContent).toContain('No activity yet.');
+    });
+
+    it('surfaces an error and does not crash when fetching activity fails', () => {
+      const key = 'TRK-1';
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}`).flush(issue());
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/comments`).flush([]);
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/issues/${key}/activity`)
+        .flush('Server error', { status: 500, statusText: 'Server Error' });
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key}/subtasks`).flush([]);
+      fixture.detectChanges();
+
+      expect(component.activityError()).toBe('Failed to load activity.');
+      expect(component.activity()).toEqual([]);
+      const error = fixture.debugElement.query(By.css('.activity .field-error'));
+      expect(error.nativeElement.textContent).toContain('Failed to load activity.');
+    });
+
+    it('ignores a stale activity response after the panel has switched to a different issue', () => {
+      const key1 = 'TRK-1';
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key1}`).flush(issue());
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key1}/comments`).flush([]);
+      const staleActivityReq = httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key1}/activity`);
+      httpMock.expectOne(`${environment.apiBaseUrl}/issues/${key1}/subtasks`).flush([]);
+
+      fixture.componentRef.setInput('issueKey', 'TRK-2');
+      fixture.detectChanges();
+      flushLoad(issue({ key: 'TRK-2' }), [], [], undefined, [activityEvent()]);
+
+      // The still-pending TRK-1 activity request resolves after the switch and must be discarded.
+      staleActivityReq.flush([activityEvent({ id: 'stale' })]);
+
+      expect(component.activity().map((event) => event.id)).toEqual(['e1']);
     });
   });
 });

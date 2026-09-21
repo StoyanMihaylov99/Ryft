@@ -1,7 +1,10 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, RouterLinkActive, convertToParamMap, provideRouter } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
+import { Notification } from '../../core/notification/models';
+import { NotificationService } from '../../core/notification/notification.service';
 import { ProjectRole } from '../../core/project/models';
 import { Sidebar } from './sidebar';
 
@@ -17,6 +20,18 @@ function createSidebar(projectKey: string | null): ComponentFixture<Sidebar> {
         },
       },
       { provide: AuthService, useValue: { currentUser: () => null } },
+      // NotificationBell (rendered in the footer) injects NotificationService directly, whose real
+      // implementation transitively constructs WebsocketService/AuthService — a fake here keeps
+      // this an isolated Sidebar test.
+      {
+        provide: NotificationService,
+        useValue: {
+          notifications: signal<Notification[]>([]),
+          unreadCount: () => 0,
+          markRead: () => {},
+          markAllRead: () => {},
+        },
+      },
     ],
   });
   const fixture = TestBed.createComponent(Sidebar);

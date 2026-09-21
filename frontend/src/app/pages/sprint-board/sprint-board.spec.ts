@@ -4,11 +4,15 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { EMPTY, Subject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Issue, IssueStatus } from '../../core/issue/models';
+import { NotificationService } from '../../core/notification/notification.service';
 import { Project, ProjectRole } from '../../core/project/models';
 import { Burndown, SprintBoard as SprintBoardModel } from '../../core/sprint/models';
+import { BoardUpdateMessage } from '../../core/websocket/models';
+import { WebsocketService } from '../../core/websocket/websocket.service';
 import { SprintBoard } from './sprint-board';
 
 const STATUS_ID_BY_CATEGORY: Record<IssueStatus, string> = {
@@ -114,9 +118,24 @@ describe('SprintBoard', () => {
   let component: SprintBoard;
   let httpMock: HttpTestingController;
   let currentUserId: string | null;
+  let boardUpdates$: Subject<BoardUpdateMessage>;
+
+  function boardUpdate(overrides: Partial<BoardUpdateMessage> = {}): BoardUpdateMessage {
+    return {
+      eventType: 'issue.status_changed',
+      projectId: 'p1',
+      projectKey: 'TRK',
+      issueId: 'i1',
+      actorId: 'other-user',
+      timestamp: '2024-01-01T00:00:00Z',
+      payload: {},
+      ...overrides,
+    };
+  }
 
   beforeEach(async () => {
     currentUserId = null;
+    boardUpdates$ = new Subject<BoardUpdateMessage>();
     await TestBed.configureTestingModule({
       imports: [SprintBoard],
       providers: [
@@ -132,6 +151,16 @@ describe('SprintBoard', () => {
           useValue: {
             currentUser: () => (currentUserId ? { id: currentUserId, displayName: 'X' } : null),
           },
+        },
+        {
+          provide: WebsocketService,
+          useValue: { watchProjectBoard: () => boardUpdates$, watchNotifications: () => EMPTY },
+        },
+        // Sidebar renders <app-notification-bell />, which injects NotificationService directly —
+        // faked here so this test never constructs the real one.
+        {
+          provide: NotificationService,
+          useValue: { notifications: () => [], unreadCount: () => 0, markRead: () => {}, markAllRead: () => {} },
         },
       ],
     }).compileComponents();
@@ -315,5 +344,44 @@ describe('SprintBoard', () => {
 
     expect(component.noActiveSprint()).toBe(false);
     expect(component.errorMessage()).toBe('Failed to load the sprint board.');
+  });
+
+  describe('live board updates', () => {
+    it('reloads when another user changes an issue', () => {
+      flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.status_changed' }));
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`)
+        .flush(boardWith(issue('TRK-1', 'DONE')));
+    });
+
+    it('reloads when the sprint starts or completes, unlike the project-wide Board', () => {
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'sprint.started' }));
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`).flush(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'sprint.completed' }));
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board/sprint`).flush(boardWith());
+    });
+
+    it('ignores an event type that does not affect what the sprint board renders', () => {
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'comment.added' }));
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/board/sprint`);
+    });
+
+    it("ignores the caller's own change", () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.status_changed', actorId: 'u1' }));
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/board/sprint`);
+    });
   });
 });

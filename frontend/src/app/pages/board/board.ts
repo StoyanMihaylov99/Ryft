@@ -5,7 +5,7 @@ import {
   transferArrayItem,
 } from '@angular/cdk/drag-drop';
 import { Component, computed, effect, inject, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
@@ -39,10 +39,19 @@ import {
   WorkflowTransitionEdit,
 } from '../../core/workflow/models';
 import { WorkflowService } from '../../core/workflow/workflow.service';
+import { WebsocketService } from '../../core/websocket/websocket.service';
 import { ComponentChip } from '../../shared/component-chip/component-chip';
 import { IssueCard } from '../../shared/issue-card/issue-card';
 import { LabelChip } from '../../shared/label-chip/label-chip';
 import { IssueDetailPanel } from './issue-detail-panel/issue-detail-panel';
+
+/** `BoardUpdateMessage.eventType` values that change what this project-wide board renders — a
+ *  comment or sprint start/complete doesn't move any card here, so those are ignored. */
+const BOARD_RELOAD_EVENT_TYPES = new Set([
+  'issue.created',
+  'issue.status_changed',
+  'issue.assignee_changed',
+]);
 
 @Component({
   imports: [
@@ -67,6 +76,7 @@ export class Board {
   private readonly projectService = inject(ProjectService);
   private readonly workflowService = inject(WorkflowService);
   private readonly authService = inject(AuthService);
+  private readonly websocketService = inject(WebsocketService);
   private readonly formBuilder = inject(FormBuilder);
 
   readonly projectKey = this.route.snapshot.paramMap.get('projectKey')!;
@@ -207,6 +217,21 @@ export class Board {
     this.loadMembers();
     this.loadLabels();
     this.loadComponents();
+
+    // Live board sync: a relevant change made by someone else reloads the whole board (the push
+    // payload carries no full Issue to merge — see BoardUpdateMessage's doc). The caller's own
+    // change is already reflected via its own optimistic local update, so that echo is ignored.
+    this.websocketService
+      .watchProjectBoard(this.projectKey)
+      .pipe(takeUntilDestroyed())
+      .subscribe((message) => {
+        if (message.actorId === this.currentUserId()) {
+          return;
+        }
+        if (BOARD_RELOAD_EVENT_TYPES.has(message.eventType)) {
+          this.loadBoard();
+        }
+      });
 
     // The URL is the single source of truth for which panel is open. `canManageWorkflow()` is a
     // tracked dependency here (not just a guard), so this self-heals if the URL is loaded before

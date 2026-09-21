@@ -52,6 +52,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/refresh", "/api/v1/auth/logout").permitAll()
                         .requestMatchers("/oauth2/**", "/login/oauth2/code/**").permitAll()
+                        // The WS handshake HTTP request carries no JWT by design (browsers can't set an
+                        // Authorization header on it) — real auth happens on the STOMP CONNECT frame
+                        // itself, via StompAuthChannelInterceptor, not this filter chain.
+                        .requestMatchers("/ws/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .oauth2Login(oauth2 -> oauth2

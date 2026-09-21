@@ -1,5 +1,7 @@
 package com.application.ryft.sprints.service;
 
+import com.application.ryft.common.event.SprintCompletedEvent;
+import com.application.ryft.common.event.SprintStartedEvent;
 import com.application.ryft.issues.service.IssueService;
 import com.application.ryft.projects.dto.ProjectResponse;
 import com.application.ryft.sprints.dto.CreateSprintRequest;
@@ -19,6 +21,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +32,16 @@ public class SprintServiceImpl implements SprintService {
     private final SprintsProjectAccess projectAccess;
     private final SprintLookupSupport sprintLookupSupport;
     private final IssueService issueService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public SprintServiceImpl(SprintRepository sprintRepository, SprintsProjectAccess projectAccess,
-            SprintLookupSupport sprintLookupSupport, IssueService issueService) {
+            SprintLookupSupport sprintLookupSupport, IssueService issueService,
+            ApplicationEventPublisher eventPublisher) {
         this.sprintRepository = sprintRepository;
         this.projectAccess = projectAccess;
         this.sprintLookupSupport = sprintLookupSupport;
         this.issueService = issueService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -96,6 +102,8 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setState(SprintState.ACTIVE);
         sprint.setCommittedPoints(committedPoints);
+        eventPublisher.publishEvent(
+                new SprintStartedEvent(sprintId, sprint.getProjectId(), project.key(), callerId, sprint.getName()));
         return SprintResponse.from(sprint);
     }
 
@@ -112,6 +120,9 @@ public class SprintServiceImpl implements SprintService {
 
         sprint.setState(SprintState.COMPLETED);
         sprint.setCompletedAt(Instant.now());
+        eventPublisher.publishEvent(
+                new SprintCompletedEvent(sprintId, sprint.getProjectId(), project.key(), callerId,
+                        sprint.getName()));
         issueService.moveUnfinishedIssuesToBacklog(callerId, project.key(), sprintId);
         return SprintResponse.from(sprint);
     }

@@ -204,6 +204,7 @@ textarea:disabled,
 
 .subtasks h3,
 .comments h3,
+.activity h3,
 .epic-progress h3 {
   margin: 0 0 0.875rem;
   font-size: 0.875rem;
@@ -386,7 +387,8 @@ textarea:disabled,
   cursor: default;
 }
 
-.comment {
+.comment,
+.activity-row {
   padding: 0.75rem 0;
   border-top: 1px solid var(--border-subtle);
 }
@@ -406,12 +408,14 @@ textarea:disabled,
 
 .comment-timestamp,
 .subtask-progress,
-.epic-progress-label {
+.epic-progress-label,
+.activity-timestamp {
   font-size: 0.75rem;
   color: var(--text-tertiary);
 }
 
-.comment-body {
+.comment-body,
+.activity-text {
   margin: 0;
   font-size: 0.8125rem;
   color: var(--text);
@@ -487,6 +491,16 @@ textarea:disabled,
 .empty-state {
   color: var(--text-tertiary);
   font-size: 0.8125rem;
+}
+
+.activity {
+  margin-top: 1.5rem;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .banner {

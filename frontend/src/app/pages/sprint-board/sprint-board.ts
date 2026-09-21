@@ -5,6 +5,7 @@ import {
   transferArrayItem,
 } from '@angular/cdk/drag-drop';
 import { Component, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { Sidebar } from '../../shared/sidebar/sidebar';
 import { AuthService } from '../../core/auth/auth.service';
@@ -16,9 +17,21 @@ import { Burndown, SprintBoard as SprintBoardModel } from '../../core/sprint/mod
 import { SprintService } from '../../core/sprint/sprint.service';
 import { Issue } from '../../core/issue/models';
 import { IssueService } from '../../core/issue/issue.service';
+import { WebsocketService } from '../../core/websocket/websocket.service';
 import { IssueCard } from '../../shared/issue-card/issue-card';
 import { BurndownChart } from '../../shared/burndown-chart/burndown-chart';
 import { IssueDetailPanel } from '../board/issue-detail-panel/issue-detail-panel';
+
+/** `BoardUpdateMessage.eventType` values that change what this sprint-scoped board renders —
+ *  every issue-level event Board itself reloads on, plus a sprint starting/completing (which
+ *  changes what's in scope here, unlike the project-wide Board). A comment never changes either. */
+const SPRINT_BOARD_RELOAD_EVENT_TYPES = new Set([
+  'issue.created',
+  'issue.status_changed',
+  'issue.assignee_changed',
+  'sprint.started',
+  'sprint.completed',
+]);
 
 @Component({
   imports: [DragDropModule, RouterLink, Sidebar, IssueCard, BurndownChart, IssueDetailPanel],
@@ -32,6 +45,7 @@ export class SprintBoard {
   private readonly issueService = inject(IssueService);
   private readonly projectService = inject(ProjectService);
   private readonly authService = inject(AuthService);
+  private readonly websocketService = inject(WebsocketService);
 
   readonly projectKey = this.route.snapshot.paramMap.get('projectKey')!;
   readonly board = signal<SprintBoardModel | null>(null);
@@ -70,6 +84,20 @@ export class SprintBoard {
   constructor() {
     this.loadBoard();
     this.loadProjectRole();
+
+    // Live board sync — mirrors Board's, plus sprint.started/completed (see
+    // SPRINT_BOARD_RELOAD_EVENT_TYPES's doc for why this differs from Board's set).
+    this.websocketService
+      .watchProjectBoard(this.projectKey)
+      .pipe(takeUntilDestroyed())
+      .subscribe((message) => {
+        if (message.actorId === this.currentUserId()) {
+          return;
+        }
+        if (SPRINT_BOARD_RELOAD_EVENT_TYPES.has(message.eventType)) {
+          this.loadBoard();
+        }
+      });
   }
 
   private loadProjectRole(): void {

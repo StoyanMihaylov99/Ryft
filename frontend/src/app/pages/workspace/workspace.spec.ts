@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
+import { NotificationService } from '../../core/notification/notification.service';
 import { Workspace } from './workspace';
 
 describe('Workspace', () => {
@@ -15,7 +16,18 @@ describe('Workspace', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [Workspace],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        // Sidebar renders <app-notification-bell />, which injects NotificationService directly —
+        // faked here so this test never constructs the real WebsocketService (needs a
+        // STOMP_CLIENT_FACTORY only app.config.ts provides).
+        {
+          provide: NotificationService,
+          useValue: { notifications: () => [], unreadCount: () => 0, markRead: () => {}, markAllRead: () => {} },
+        },
+      ],
     }).compileComponents();
 
     httpMock = TestBed.inject(HttpTestingController);

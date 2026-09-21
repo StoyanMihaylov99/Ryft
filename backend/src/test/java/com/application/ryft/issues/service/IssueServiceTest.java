@@ -8,6 +8,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.application.ryft.common.event.IssueAssigneeChangedEvent;
+import com.application.ryft.common.event.IssueCreatedEvent;
+import com.application.ryft.common.event.IssueStatusChangedEvent;
 import com.application.ryft.issues.dto.ChangeIssueStatusRequest;
 import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
@@ -51,6 +54,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class IssueServiceTest {
@@ -82,6 +86,9 @@ class IssueServiceTest {
     @Mock
     private IssueWorkflowAccess issueWorkflowAccess;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private IssueServiceImpl issueService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -99,7 +106,7 @@ class IssueServiceTest {
         IssueLabelingService issueLabelingService = new IssueLabelingService(issueLabelRepository, labelRepository,
                 issueComponentRepository, componentRepository, issueWorkflowAccess);
         issueService = new IssueServiceImpl(issueRepository, issueKeySequenceRepository, projectAccess,
-                commentRepository, issueLabelingService, issueWorkflowAccess);
+                commentRepository, issueLabelingService, issueWorkflowAccess, eventPublisher);
         org.mockito.Mockito.lenient().when(issueWorkflowAccess.requireScheme(any(), any())).thenReturn(defaultScheme());
         org.mockito.Mockito.lenient().when(projectAccess.getRole(callerId, "TRK")).thenReturn(ProjectRole.OWNER);
     }
@@ -1369,5 +1376,97 @@ class IssueServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).key()).isEqualTo("TRK-1");
+    }
+
+    @Test
+    void createPublishesIssueCreatedEvent() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        lenient().when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(issueKeySequenceRepository.findForUpdate(projectId)).thenReturn(Optional.empty());
+        when(issueKeySequenceRepository.save(any(IssueKeySequence.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(issueRepository.save(any(Issue.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        issueService.create(callerId, "TRK",
+                new CreateIssueRequest(IssueType.BUG, "Fix login", null, null, null, null, null, null, null));
+
+        ArgumentCaptor<IssueCreatedEvent> captor = ArgumentCaptor.forClass(IssueCreatedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        IssueCreatedEvent event = captor.getValue();
+        assertThat(event.issueKey()).isEqualTo("TRK-1");
+        assertThat(event.projectId()).isEqualTo(projectId);
+        assertThat(event.projectKey()).isEqualTo("TRK");
+        assertThat(event.actorId()).isEqualTo(callerId);
+        assertThat(event.reporterId()).isEqualTo(callerId);
+        assertThat(event.title()).isEqualTo("Fix login");
+        assertThat(event.issueType()).isEqualTo("BUG");
+    }
+
+    @Test
+    void changeStatusPublishesStatusChangedEventWithResolvedStatusNames() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        issue.setWorkflowStatusId(todoStatusId);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(issueWorkflowAccess.isTransitionLegal(callerId, "TRK", todoStatusId, doneStatusId)).thenReturn(true);
+
+        issueService.changeStatus(callerId, "TRK-1", new ChangeIssueStatusRequest(doneStatusId));
+
+        ArgumentCaptor<IssueStatusChangedEvent> captor = ArgumentCaptor.forClass(IssueStatusChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        IssueStatusChangedEvent event = captor.getValue();
+        assertThat(event.issueKey()).isEqualTo("TRK-1");
+        assertThat(event.fromStatus()).isEqualTo("To Do");
+        assertThat(event.toStatus()).isEqualTo("Done");
+    }
+
+    @Test
+    void updatePublishesAssigneeChangedEventWhenAssigneeChanges() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        UUID newAssigneeId = UUID.randomUUID();
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        lenient().when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(projectAccess.isMember(callerId, "TRK", newAssigneeId)).thenReturn(true);
+
+        issueService.update(callerId, "TRK-1",
+                new UpdateIssueRequest(null, null, null, newAssigneeId, null, null, null, null));
+
+        ArgumentCaptor<IssueAssigneeChangedEvent> captor = ArgumentCaptor.forClass(IssueAssigneeChangedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        IssueAssigneeChangedEvent event = captor.getValue();
+        assertThat(event.previousAssigneeId()).isNull();
+        assertThat(event.newAssigneeId()).isEqualTo(newAssigneeId);
+    }
+
+    @Test
+    void updateDoesNotPublishAssigneeChangedEventWhenAssigneeIsUnchanged() {
+        // caller is the assignee (and thus an "involved Member" allowed to edit), reassigning to themselves.
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, callerId,
+                UUID.randomUUID(), 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(projectAccess.getRole(callerId, "TRK")).thenReturn(ProjectRole.MEMBER);
+        when(projectAccess.isMember(callerId, "TRK", callerId)).thenReturn(true);
+
+        issueService.update(callerId, "TRK-1",
+                new UpdateIssueRequest(null, null, null, callerId, null, null, null, null));
+
+        verify(eventPublisher, never()).publishEvent(any(IssueAssigneeChangedEvent.class));
+    }
+
+    @Test
+    void updateDoesNotPublishAnyEventWhenAssigneeFieldIsAbsent() {
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.BUG, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        lenient().when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        issueService.update(callerId, "TRK-1",
+                new UpdateIssueRequest("New title", null, null, null, null, null, null, null));
+
+        verify(eventPublisher, never()).publishEvent(any(IssueAssigneeChangedEvent.class));
     }
 }

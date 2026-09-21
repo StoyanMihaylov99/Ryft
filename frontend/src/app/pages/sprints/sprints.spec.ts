@@ -5,6 +5,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
+import { NotificationService } from '../../core/notification/notification.service';
 import { Project, ProjectRole } from '../../core/project/models';
 import { Burndown, Sprint } from '../../core/sprint/models';
 import { Sprints } from './sprints';
@@ -80,6 +81,12 @@ describe('Sprints', () => {
           useValue: {
             currentUser: () => (currentUserId ? { id: currentUserId, displayName: 'X' } : null),
           },
+        },
+        // Sidebar renders <app-notification-bell />, which injects NotificationService directly —
+        // faked here so this Sprints test never constructs the real WebsocketService/AuthService chain.
+        {
+          provide: NotificationService,
+          useValue: { notifications: () => [], unreadCount: () => 0, markRead: () => {}, markAllRead: () => {} },
         },
       ],
     }).compileComponents();

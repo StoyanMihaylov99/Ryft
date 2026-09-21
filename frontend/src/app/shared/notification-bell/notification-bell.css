@@ -1,0 +1,155 @@
+:host {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.notification-bell {
+  position: relative;
+  display: flex;
+}
+
+/* Duplicated from sidebar.css's .icon-btn: component styles are view-encapsulated, so that class
+   doesn't cascade into this component's own template. */
+.bell-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.bell-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.bell-btn:hover {
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(320px, calc(100vw - 2rem));
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  z-index: 20;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-header h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mark-all-btn {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.125rem 0.25rem;
+}
+
+.mark-all-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.mark-all-btn:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  overflow-y: auto;
+}
+
+.notification-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1875rem;
+  padding: 0.5rem 0.5rem;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  background: var(--bg-elevated-2);
+}
+
+/* An unread notification gets an accent bar rather than a background tint — the "Unread: " prefix
+   in the template (visually hidden) carries the same state to assistive tech, so this stays a
+   purely visual reinforcement, not the only way the state is conveyed. */
+.notification-item.unread {
+  border-left-color: var(--accent);
+}
+
+.notification-text {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.notification-timestamp {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+}
+
+.empty-state {
+  padding: 1rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+  text-align: center;
+}
