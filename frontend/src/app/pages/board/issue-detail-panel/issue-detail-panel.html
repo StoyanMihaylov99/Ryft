@@ -357,6 +357,29 @@
           }
         </div>
       </div>
+
+      <section class="activity">
+        <h3>Activity</h3>
+
+        @if (activityError()) {
+          <p class="field-error" role="alert">{{ activityError() }}</p>
+        }
+
+        @if (loadingActivity()) {
+          <p class="empty-state">Loading activity…</p>
+        } @else {
+          <ul class="activity-list">
+            @for (event of activity(); track event.id) {
+              <li class="activity-row">
+                <p class="activity-text">{{ activityDisplayText(event) }}</p>
+                <span class="activity-timestamp">{{ event.timestamp | date: 'MMM d, y, h:mm a' }}</span>
+              </li>
+            } @empty {
+              <p class="empty-state">No activity yet.</p>
+            }
+          </ul>
+        }
+      </section>
     }
   </aside>
 </div>

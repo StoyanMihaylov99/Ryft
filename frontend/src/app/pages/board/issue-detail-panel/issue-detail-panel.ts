@@ -12,6 +12,9 @@ import {
 import { A11yModule } from '@angular/cdk/a11y';
 import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, switchMap } from 'rxjs/operators';
+import { activityText } from '../../../core/activity/activity-display';
+import { ActivityEvent } from '../../../core/activity/models';
+import { ActivityService } from '../../../core/activity/activity.service';
 import { AuthService } from '../../../core/auth/auth.service';
 import { Comment } from '../../../core/comment/models';
 import { CommentService } from '../../../core/comment/comment.service';
@@ -47,6 +50,7 @@ import { LabelChip } from '../../../shared/label-chip/label-chip';
 export class IssueDetailPanel {
   private readonly issueService = inject(IssueService);
   private readonly commentService = inject(CommentService);
+  private readonly activityService = inject(ActivityService);
   private readonly workflowService = inject(WorkflowService);
   private readonly authService = inject(AuthService);
 
@@ -64,6 +68,9 @@ export class IssueDetailPanel {
 
   readonly issue = signal<Issue | null>(null);
   readonly comments = signal<Comment[]>([]);
+  readonly activity = signal<ActivityEvent[]>([]);
+  readonly loadingActivity = signal(false);
+  readonly activityError = signal<string | null>(null);
   readonly loading = signal(true);
   readonly errorMessage = signal<string | null>(null);
   readonly newCommentBody = signal('');
@@ -246,6 +253,8 @@ export class IssueDetailPanel {
     this.errorMessage.set(null);
     this.issue.set(null);
     this.comments.set([]);
+    this.activity.set([]);
+    this.activityError.set(null);
     this.subtasks.set([]);
     this.subtaskError.set(null);
     this.newSubtaskTitle.set('');
@@ -281,6 +290,33 @@ export class IssueDetailPanel {
         }
       },
     });
+    this.loadActivity(issueKey);
+  }
+
+  /** Every issue type gets an activity feed, unlike Subtasks/Epic-progress (which are type-gated) —
+   *  so this is unconditional, alongside the comments load above. */
+  private loadActivity(issueKey: string): void {
+    this.loadingActivity.set(true);
+    this.activityService.listForIssue(issueKey).subscribe({
+      next: (activity) => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingActivity.set(false);
+        this.activity.set(activity);
+      },
+      error: () => {
+        if (this.displayedIssueKey() !== issueKey) {
+          return;
+        }
+        this.loadingActivity.set(false);
+        this.activityError.set('Failed to load activity.');
+      },
+    });
+  }
+
+  activityDisplayText(event: ActivityEvent): string {
+    return activityText(event);
   }
 
   private canLoadSubtasksFor(type: IssueType): boolean {

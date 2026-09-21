@@ -7,6 +7,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.application.ryft.common.event.CommentAddedEvent;
+import com.application.ryft.common.event.CommentDeletedEvent;
+import com.application.ryft.common.event.CommentUpdatedEvent;
 import com.application.ryft.identity.user.dto.UserResponse;
 import com.application.ryft.identity.user.service.UserService;
 import com.application.ryft.issues.dto.CommentResponse;
@@ -33,8 +36,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class CommentServiceTest {
@@ -51,6 +56,9 @@ class CommentServiceTest {
     @Mock
     private UserService userService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private CommentServiceImpl commentService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -64,7 +72,8 @@ class CommentServiceTest {
 
     @BeforeEach
     void setUp() {
-        commentService = new CommentServiceImpl(commentRepository, issueRepository, projectAccess, userService);
+        commentService = new CommentServiceImpl(commentRepository, issueRepository, projectAccess, userService,
+                eventPublisher);
     }
 
     @Test
@@ -221,5 +230,55 @@ class CommentServiceTest {
         assertThatThrownBy(() -> commentService.delete(callerId, UUID.randomUUID()))
                 .isInstanceOf(InsufficientProjectRoleException.class);
         verify(commentRepository, never()).delete(any(Comment.class));
+    }
+
+    @Test
+    void createPublishesCommentAddedEvent() {
+        when(issueRepository.findByKey("TRK-1")).thenReturn(Optional.of(issue));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(commentRepository.saveAndFlush(any(Comment.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(userService.getById(callerId)).thenReturn(caller);
+
+        commentService.create(callerId, "TRK-1", new CreateCommentRequest("Looks good"));
+
+        ArgumentCaptor<CommentAddedEvent> captor = ArgumentCaptor.forClass(CommentAddedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        CommentAddedEvent event = captor.getValue();
+        assertThat(event.issueId()).isEqualTo(issue.getId());
+        assertThat(event.issueKey()).isEqualTo("TRK-1");
+        assertThat(event.projectId()).isEqualTo(projectId);
+        assertThat(event.actorId()).isEqualTo(callerId);
+        assertThat(event.commentBody()).isEqualTo("Looks good");
+    }
+
+    @Test
+    void updatePublishesCommentUpdatedEvent() {
+        Comment comment = new Comment(issue, callerId, "Original");
+        when(commentRepository.findById(any(UUID.class))).thenReturn(Optional.of(comment));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        when(userService.getById(callerId)).thenReturn(caller);
+
+        commentService.update(callerId, UUID.randomUUID(), new UpdateCommentRequest("Edited"));
+
+        ArgumentCaptor<CommentUpdatedEvent> captor = ArgumentCaptor.forClass(CommentUpdatedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().commentBody()).isEqualTo("Edited");
+        assertThat(captor.getValue().issueKey()).isEqualTo("TRK-1");
+    }
+
+    @Test
+    void deletePublishesCommentDeletedEventWithFieldsCapturedBeforeDeletion() {
+        Comment comment = new Comment(issue, callerId, "Original");
+        when(commentRepository.findById(any(UUID.class))).thenReturn(Optional.of(comment));
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+
+        commentService.delete(callerId, UUID.randomUUID());
+
+        ArgumentCaptor<CommentDeletedEvent> captor = ArgumentCaptor.forClass(CommentDeletedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        CommentDeletedEvent event = captor.getValue();
+        assertThat(event.issueId()).isEqualTo(issue.getId());
+        assertThat(event.issueKey()).isEqualTo("TRK-1");
+        assertThat(event.commentId()).isEqualTo(comment.getId());
     }
 }

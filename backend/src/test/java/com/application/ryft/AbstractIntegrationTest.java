@@ -2,6 +2,7 @@ package com.application.ryft;
 
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.testcontainers.containers.MongoDBContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 /**
@@ -25,7 +26,11 @@ public abstract class AbstractIntegrationTest {
     @ServiceConnection
     static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
+    @ServiceConnection
+    static final MongoDBContainer mongo = new MongoDBContainer("mongo:7");
+
     static {
         postgres.start();
+        mongo.start();
     }
 }

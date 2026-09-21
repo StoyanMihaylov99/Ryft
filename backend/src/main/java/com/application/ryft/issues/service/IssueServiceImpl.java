@@ -19,6 +19,9 @@ import com.application.ryft.issues.exception.NotAnEpicException;
 import com.application.ryft.issues.repository.CommentRepository;
 import com.application.ryft.issues.repository.IssueKeySequenceRepository;
 import com.application.ryft.issues.repository.IssueRepository;
+import com.application.ryft.common.event.IssueAssigneeChangedEvent;
+import com.application.ryft.common.event.IssueCreatedEvent;
+import com.application.ryft.common.event.IssueStatusChangedEvent;
 import com.application.ryft.projects.dto.ProjectResponse;
 import com.application.ryft.projects.entity.ProjectRole;
 import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
@@ -31,6 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,16 +49,19 @@ public class IssueServiceImpl implements IssueService {
     private final CommentRepository commentRepository;
     private final IssueLabelingService issueLabelingService;
     private final IssueWorkflowAccess issueWorkflowAccess;
+    private final ApplicationEventPublisher eventPublisher;
 
     public IssueServiceImpl(IssueRepository issueRepository, IssueKeySequenceRepository issueKeySequenceRepository,
             IssueProjectAccess projectAccess, CommentRepository commentRepository,
-            IssueLabelingService issueLabelingService, IssueWorkflowAccess issueWorkflowAccess) {
+            IssueLabelingService issueLabelingService, IssueWorkflowAccess issueWorkflowAccess,
+            ApplicationEventPublisher eventPublisher) {
         this.issueRepository = issueRepository;
         this.issueKeySequenceRepository = issueKeySequenceRepository;
         this.projectAccess = projectAccess;
         this.commentRepository = commentRepository;
         this.issueLabelingService = issueLabelingService;
         this.issueWorkflowAccess = issueWorkflowAccess;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -82,6 +89,8 @@ public class IssueServiceImpl implements IssueService {
         issue.setParentIssueId(request.parentId());
         Issue saved = issueRepository.save(issue);
         issueLabelingService.attachOnCreate(saved, project.id(), request.labelIds(), request.componentIds());
+        eventPublisher.publishEvent(new IssueCreatedEvent(saved.getId(), saved.getKey(), project.id(), project.key(),
+                callerId, saved.getAssigneeId(), saved.getReporterId(), saved.getTitle(), saved.getType().name()));
         return issueLabelingService.toResponse(saved, scheme, callerId, role);
     }
 
@@ -175,12 +184,23 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse update(UUID callerId, String issueKey, UpdateIssueRequest request) {
         Issue issue = requireIssue(issueKey);
         String projectKey = projectKeyOf(issue);
-        projectAccess.requireMembership(callerId, projectKey);
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         ProjectRole role = projectAccess.getRole(callerId, projectKey);
         requireCanEditIssue(role, callerId, issue);
 
+        UUID previousAssigneeId = issue.getAssigneeId();
         applyUpdate(issue, callerId, projectKey, request);
+        publishAssigneeChangedIfNeeded(issue, project, callerId, previousAssigneeId);
         return issueLabelingService.toResponse(issue, callerId, projectKey, role);
+    }
+
+    private void publishAssigneeChangedIfNeeded(Issue issue, ProjectResponse project, UUID callerId,
+            UUID previousAssigneeId) {
+        UUID newAssigneeId = issue.getAssigneeId();
+        if (newAssigneeId != null && !newAssigneeId.equals(previousAssigneeId)) {
+            eventPublisher.publishEvent(new IssueAssigneeChangedEvent(issue.getId(), issue.getKey(), project.id(),
+                    project.key(), callerId, previousAssigneeId, newAssigneeId));
+        }
     }
 
     @Override
@@ -188,7 +208,7 @@ public class IssueServiceImpl implements IssueService {
     public IssueResponse changeStatus(UUID callerId, String issueKey, ChangeIssueStatusRequest request) {
         Issue issue = requireIssue(issueKey);
         String projectKey = projectKeyOf(issue);
-        projectAccess.requireMembership(callerId, projectKey);
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
         ProjectRole role = projectAccess.getRole(callerId, projectKey);
         requireNotViewer(role);
 
@@ -200,7 +220,18 @@ public class IssueServiceImpl implements IssueService {
             throw new IllegalStatusTransitionException(fromStatusId, toStatusId);
         }
         setStatus(issue, toStatusId, scheme);
+        eventPublisher.publishEvent(new IssueStatusChangedEvent(issue.getId(), issue.getKey(), project.id(),
+                project.key(), callerId, issue.getAssigneeId(), issue.getReporterId(),
+                statusNameOf(scheme, fromStatusId), statusNameOf(scheme, toStatusId)));
         return issueLabelingService.toResponse(issue, scheme, callerId, role);
+    }
+
+    private String statusNameOf(WorkflowSchemeResponse scheme, UUID statusId) {
+        return scheme.statuses().stream()
+                .filter(status -> status.id().equals(statusId))
+                .map(WorkflowStatusResponse::name)
+                .findFirst()
+                .orElse(null);
     }
 
     private void applyUpdate(Issue issue, UUID callerId, String projectKey, UpdateIssueRequest request) {

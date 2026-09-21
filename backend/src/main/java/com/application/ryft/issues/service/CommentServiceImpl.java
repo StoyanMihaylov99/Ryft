@@ -1,5 +1,8 @@
 package com.application.ryft.issues.service;
 
+import com.application.ryft.common.event.CommentAddedEvent;
+import com.application.ryft.common.event.CommentDeletedEvent;
+import com.application.ryft.common.event.CommentUpdatedEvent;
 import com.application.ryft.identity.user.dto.UserResponse;
 import com.application.ryft.identity.user.service.UserService;
 import com.application.ryft.issues.dto.CommentResponse;
@@ -19,6 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +33,15 @@ public class CommentServiceImpl implements CommentService {
     private final IssueRepository issueRepository;
     private final IssueProjectAccess projectAccess;
     private final UserService userService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CommentServiceImpl(CommentRepository commentRepository, IssueRepository issueRepository,
-            IssueProjectAccess projectAccess, UserService userService) {
+            IssueProjectAccess projectAccess, UserService userService, ApplicationEventPublisher eventPublisher) {
         this.commentRepository = commentRepository;
         this.issueRepository = issueRepository;
         this.projectAccess = projectAccess;
         this.userService = userService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -48,6 +54,9 @@ public class CommentServiceImpl implements CommentService {
 
         // flush so @CreationTimestamp (VM-generated at flush time) is populated before we read it back below
         Comment comment = commentRepository.saveAndFlush(new Comment(issue, callerId, request.body().trim()));
+        eventPublisher.publishEvent(new CommentAddedEvent(issue.getId(), issue.getKey(), issue.getProjectId(),
+                projectKey, callerId, issue.getAssigneeId(), issue.getReporterId(), comment.getId(),
+                comment.getBody()));
         return toResponse(comment, userService.getById(callerId));
     }
 
@@ -68,12 +77,15 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public CommentResponse update(UUID callerId, UUID commentId, UpdateCommentRequest request) {
         Comment comment = requireComment(commentId);
-        String projectKey = projectKeyOf(comment.getIssue());
+        Issue issue = comment.getIssue();
+        String projectKey = projectKeyOf(issue);
         projectAccess.requireMembership(callerId, projectKey);
         requireNotViewer(callerId, projectKey);
         requireAuthor(callerId, comment);
 
         comment.editBody(request.body().trim());
+        eventPublisher.publishEvent(new CommentUpdatedEvent(issue.getId(), issue.getKey(), issue.getProjectId(),
+                projectKey, callerId, comment.getId(), comment.getBody()));
         return toResponse(comment, userService.getById(comment.getAuthorId()));
     }
 
@@ -81,12 +93,21 @@ public class CommentServiceImpl implements CommentService {
     @Transactional
     public void delete(UUID callerId, UUID commentId) {
         Comment comment = requireComment(commentId);
-        String projectKey = projectKeyOf(comment.getIssue());
+        Issue issue = comment.getIssue();
+        String projectKey = projectKeyOf(issue);
         projectAccess.requireMembership(callerId, projectKey);
         requireNotViewer(callerId, projectKey);
         requireAuthor(callerId, comment);
 
+        // Captured before delete: the entity (and its lazy Issue association) isn't safely readable afterward.
+        UUID issueId = issue.getId();
+        String issueKey = issue.getKey();
+        UUID projectId = issue.getProjectId();
+        UUID deletedCommentId = comment.getId();
+
         commentRepository.delete(comment);
+        eventPublisher.publishEvent(new CommentDeletedEvent(issueId, issueKey, projectId, projectKey, callerId,
+                deletedCommentId));
     }
 
     private Issue requireIssue(String issueKey) {

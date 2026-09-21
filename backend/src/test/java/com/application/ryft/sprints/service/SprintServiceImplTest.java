@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.application.ryft.common.event.SprintCompletedEvent;
+import com.application.ryft.common.event.SprintStartedEvent;
 import com.application.ryft.issues.dto.IssueResponse;
 import com.application.ryft.issues.entity.IssuePriority;
 import com.application.ryft.issues.entity.IssueStatus;
@@ -32,8 +34,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class SprintServiceImplTest {
@@ -50,6 +54,9 @@ class SprintServiceImplTest {
     @Mock
     private IssueService issueService;
 
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     private SprintServiceImpl sprintService;
 
     private final UUID callerId = UUID.randomUUID();
@@ -59,7 +66,8 @@ class SprintServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        sprintService = new SprintServiceImpl(sprintRepository, projectAccess, sprintLookupSupport, issueService);
+        sprintService = new SprintServiceImpl(sprintRepository, projectAccess, sprintLookupSupport, issueService,
+                eventPublisher);
     }
 
     @Test
@@ -205,6 +213,11 @@ class SprintServiceImplTest {
 
         assertThat(result.state()).isEqualTo(SprintState.ACTIVE);
         assertThat(result.committedPoints()).isEqualTo(8);
+        ArgumentCaptor<SprintStartedEvent> captor = ArgumentCaptor.forClass(SprintStartedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().sprintId()).isEqualTo(sprintId);
+        assertThat(captor.getValue().projectKey()).isEqualTo("TRK");
+        assertThat(captor.getValue().sprintName()).isEqualTo("Sprint 1");
     }
 
     @Test
@@ -274,6 +287,38 @@ class SprintServiceImplTest {
         assertThat(result.state()).isEqualTo(SprintState.COMPLETED);
         assertThat(result.completedAt()).isNotNull();
         verify(issueService).moveUnfinishedIssuesToBacklog(callerId, "TRK", sprintId);
+        ArgumentCaptor<SprintCompletedEvent> captor = ArgumentCaptor.forClass(SprintCompletedEvent.class);
+        verify(eventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().sprintId()).isEqualTo(sprintId);
+        assertThat(captor.getValue().projectKey()).isEqualTo("TRK");
+        assertThat(captor.getValue().sprintName()).isEqualTo("Sprint 1");
+    }
+
+    @Test
+    void startDoesNotPublishEventWhenBlockedByAnotherActiveSprint() {
+        UUID sprintId = UUID.randomUUID();
+        Sprint sprint = new Sprint(projectId, "Sprint 1", null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 14));
+        when(sprintLookupSupport.requireSprint(sprintId)).thenReturn(sprint);
+        when(projectAccess.requireMembershipByProjectId(callerId, projectId)).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+        when(sprintRepository.existsByProjectIdAndState(projectId, SprintState.ACTIVE)).thenReturn(true);
+
+        assertThatThrownBy(() -> sprintService.start(callerId, sprintId))
+                .isInstanceOf(ActiveSprintAlreadyExistsException.class);
+        verify(eventPublisher, never()).publishEvent(any(SprintStartedEvent.class));
+    }
+
+    @Test
+    void completeDoesNotPublishEventWhenSprintIsNotActive() {
+        UUID sprintId = UUID.randomUUID();
+        Sprint sprint = new Sprint(projectId, "Sprint 1", null, LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 14));
+        when(sprintLookupSupport.requireSprint(sprintId)).thenReturn(sprint);
+        when(projectAccess.requireMembershipByProjectId(callerId, projectId)).thenReturn(project);
+        when(projectAccess.isOwnerOrAdmin(callerId, "TRK")).thenReturn(true);
+
+        assertThatThrownBy(() -> sprintService.complete(callerId, sprintId))
+                .isInstanceOf(IllegalSprintStateTransitionException.class);
+        verify(eventPublisher, never()).publishEvent(any(SprintCompletedEvent.class));
     }
 
     @Test

@@ -7,9 +7,10 @@ import {
   canManageProjectSettings,
 } from '../../core/project/permissions';
 import { ThemeService } from '../../core/theme/theme.service';
+import { NotificationBell } from '../notification-bell/notification-bell';
 
 @Component({
-  imports: [RouterLink, RouterLinkActive],
+  imports: [RouterLink, RouterLinkActive, NotificationBell],
   selector: 'app-sidebar',
   templateUrl: './sidebar.html',
   styleUrl: './sidebar.css',

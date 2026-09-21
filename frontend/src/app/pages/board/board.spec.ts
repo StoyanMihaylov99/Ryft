@@ -4,14 +4,23 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, EMPTY, Subject } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { Board as BoardModel } from '../../core/board/models';
 import { Issue, IssueStatus, Label, ProjectComponent } from '../../core/issue/models';
+import { NotificationService } from '../../core/notification/notification.service';
 import { Project, ProjectMember, ProjectRole } from '../../core/project/models';
 import { WorkflowScheme } from '../../core/workflow/models';
+import { BoardUpdateMessage } from '../../core/websocket/models';
+import { WebsocketService } from '../../core/websocket/websocket.service';
 import { Board } from './board';
+
+/** Sidebar renders <app-notification-bell />, which injects NotificationService directly — faked
+ *  here (and below) so these Board tests never construct the real one. */
+function fakeNotificationService() {
+  return { notifications: () => [], unreadCount: () => 0, markRead: () => {}, markAllRead: () => {} };
+}
 
 const STATUS_ID_BY_CATEGORY: Record<IssueStatus, string> = {
   TODO: 'todo',
@@ -131,10 +140,25 @@ describe('Board', () => {
   let router: Router;
   let queryParamMap$: BehaviorSubject<ParamMap>;
   let currentUserId: string | null;
+  let boardUpdates$: Subject<BoardUpdateMessage>;
+
+  function boardUpdate(overrides: Partial<BoardUpdateMessage> = {}): BoardUpdateMessage {
+    return {
+      eventType: 'issue.status_changed',
+      projectId: 'p1',
+      projectKey: 'TRK',
+      issueId: 'i1',
+      actorId: 'other-user',
+      timestamp: '2024-01-01T00:00:00Z',
+      payload: {},
+      ...overrides,
+    };
+  }
 
   beforeEach(async () => {
     currentUserId = null;
     queryParamMap$ = new BehaviorSubject(convertToParamMap({}));
+    boardUpdates$ = new Subject<BoardUpdateMessage>();
     await TestBed.configureTestingModule({
       imports: [Board],
       providers: [
@@ -157,6 +181,11 @@ describe('Board', () => {
             currentUser: () => (currentUserId ? { id: currentUserId, displayName: 'X' } : null),
           },
         },
+        {
+          provide: WebsocketService,
+          useValue: { watchProjectBoard: () => boardUpdates$, watchNotifications: () => EMPTY },
+        },
+        { provide: NotificationService, useValue: fakeNotificationService() },
       ],
     }).compileComponents();
 
@@ -781,6 +810,11 @@ describe('Board', () => {
             provide: AuthService,
             useValue: { currentUser: () => ({ id: 'u1', displayName: 'X' }) },
           },
+          {
+            provide: WebsocketService,
+            useValue: { watchProjectBoard: () => boardUpdates$, watchNotifications: () => EMPTY },
+          },
+          { provide: NotificationService, useValue: fakeNotificationService() },
         ],
       }).compileComponents();
       httpMock = TestBed.inject(HttpTestingController);
@@ -1061,6 +1095,43 @@ describe('Board', () => {
         toStatusId: 'inprogress',
         name: null,
       });
+    });
+  });
+
+  describe('live board updates', () => {
+    it('reloads the board when another user changes something the board renders', () => {
+      flushInitialBoard(boardWith(issue('TRK-1', 'TODO')));
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.status_changed' }));
+
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(boardWith(issue('TRK-1', 'DONE')));
+    });
+
+    it('reloads on issue.created and issue.assignee_changed too', () => {
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.created' }));
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.assignee_changed' }));
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/board`).flush(boardWith());
+    });
+
+    it('ignores an event type that does not affect what the board renders', () => {
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'comment.added' }));
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/board`);
+    });
+
+    it("ignores the caller's own change, since it's already reflected via its own optimistic update", () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+
+      boardUpdates$.next(boardUpdate({ eventType: 'issue.status_changed', actorId: 'u1' }));
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/board`);
     });
   });
 });
