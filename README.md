@@ -8,6 +8,9 @@ A self-hosted, Jira-style project management and issue tracking tool:
 projects, epics, issues, sprints, Kanban/Scrum boards, configurable
 workflows, and role-based permissions.
 
+<img width="1897" height="915" alt="Screenshot 2026-09-21 at 11 45 20" src="https://github.com/user-attachments/assets/650969ca-bd26-47ae-8a3f-bb8e31ba1005" />
+
+
 The domain (hierarchical
 entities, configurable workflows, permissions, real-time collaboration)
 forces genuinely hard design decisions that a typical CRUD app doesn't:
