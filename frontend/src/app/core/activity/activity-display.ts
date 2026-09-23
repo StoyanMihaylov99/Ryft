@@ -2,14 +2,12 @@ import { ActivityEvent } from './models';
 
 /**
  * Pure display logic for an `ActivityEvent`, kept independently testable — mirrors
- * `core/project/permissions.ts`'s convention. `ActivityEventResponse` carries only `actorId` (see
- * that model's doc), not a resolved display name the way `Comment`/`Notification` do, so every line
- * here necessarily names the actor by a shortened id rather than a real name — a known, accepted
- * limitation rather than an extra round trip to resolve it.
+ * `core/project/permissions.ts`'s convention. `actorDisplayName` (see that model's doc) is preferred;
+ * a shortened id is only ever shown as a fallback for an actor who no longer resolves to a user.
  */
 
-function actorLabel(actorId: string): string {
-  return `User ${actorId.slice(0, 8)}`;
+function actorLabel(event: ActivityEvent): string {
+  return event.actorDisplayName ?? `User ${event.actorId.slice(0, 8)}`;
 }
 
 function payloadString(payload: Record<string, unknown>, key: string): string {
@@ -24,7 +22,7 @@ function humanizeEventType(eventType: string): string {
 }
 
 export function activityText(event: ActivityEvent): string {
-  const actor = actorLabel(event.actorId);
+  const actor = actorLabel(event);
   const payload = event.payload;
 
   switch (event.eventType) {

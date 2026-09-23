@@ -62,12 +62,19 @@ describe('Sidebar', () => {
     );
   });
 
-  it('lists Board/Sprints/Backlog/Scrum board/Members for a role with no elevated permissions', () => {
+  it('lists Board/Sprints/Backlog/Scrum board/Filters/Members for a role with no elevated permissions', () => {
     const fixture = createSidebar('TRK');
     fixture.componentRef.setInput('myRole', 'VIEWER' satisfies ProjectRole);
     fixture.detectChanges();
 
-    expect(subItemLabels(fixture)).toEqual(['Board', 'Sprints', 'Backlog', 'Scrum board', 'Members']);
+    expect(subItemLabels(fixture)).toEqual([
+      'Board',
+      'Sprints',
+      'Backlog',
+      'Scrum board',
+      'Filters',
+      'Members',
+    ]);
   });
 
   it('adds Workflow and Labels & components for an Owner/Admin', () => {
@@ -80,6 +87,7 @@ describe('Sidebar', () => {
       'Sprints',
       'Backlog',
       'Scrum board',
+      'Filters',
       'Members',
       'Workflow',
       'Labels & components',
@@ -111,7 +119,7 @@ describe('Sidebar', () => {
       .queryAll(By.css('.nav-project .nav-item--sub'))
       .map((link) => link.injector.get(RouterLinkActive));
 
-    expect(activeDirectives).toHaveLength(5);
+    expect(activeDirectives).toHaveLength(6);
     for (const directive of activeDirectives) {
       expect(directive.routerLinkActiveOptions).toEqual({
         paths: 'exact',

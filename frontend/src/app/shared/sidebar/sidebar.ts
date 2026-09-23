@@ -7,6 +7,7 @@ import {
   canManageProjectSettings,
 } from '../../core/project/permissions';
 import { ThemeService } from '../../core/theme/theme.service';
+import { initials } from '../initials';
 import { NotificationBell } from '../notification-bell/notification-bell';
 
 @Component({
@@ -46,12 +47,7 @@ export class Sidebar {
     fragment: 'ignored',
   };
 
-  initials(name: string): string {
-    const parts = name.trim().split(/\s+/);
-    const first = parts[0]?.[0] ?? '';
-    const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? '') : '';
-    return (first + last).toUpperCase();
-  }
+  readonly initials = initials;
 
   toggleTheme(): void {
     this.themeService.toggle();

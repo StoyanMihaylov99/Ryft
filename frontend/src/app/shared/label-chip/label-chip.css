@@ -35,9 +35,13 @@
   white-space: nowrap;
 }
 
+/* Padded taller than the read-only `.label-chip` span above (18px) to clear WCAG 2.2 SC 2.5.8's
+ * 24x24 CSS px minimum target size — this rule only applies to the interactive button variant, so
+ * read-only badge usages (e.g. issue-card) keep the compact span sizing. */
 button.label-chip {
   cursor: pointer;
   font-family: inherit;
+  padding-block: 0.375rem;
 }
 
 button.label-chip.selected {
@@ -50,9 +54,15 @@ button.label-chip:disabled {
   opacity: 0.6;
 }
 
+/* Layered on top of (not replacing) `.selected`'s outline: a selected-and-focused chip must look
+ * different from selected-alone, or a keyboard user tabbing across several selected chips can't
+ * tell which one has focus. The extra `box-shadow` ring reuses the app-wide focus token (see
+ * `styles.scss`'s `:focus-visible`) so it's visible both as a halo inside the outline's gap and
+ * extending past its outer edge, regardless of whether `.selected` is also present. */
 button.label-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .check {

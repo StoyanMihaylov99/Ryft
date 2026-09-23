@@ -8,6 +8,10 @@ import java.util.UUID;
  * A true leaf module: every method here takes only primitives/ids the caller already has, never a
  * type from another module (no {@code issues}/{@code sprints} entity or DTO). This is what lets
  * {@code activity} be called from anywhere in the codebase without ever depending back on the caller.
+ * {@link #listForIssue} does depend on {@code identity.user.service.UserService} internally (to
+ * resolve {@code actorDisplayName} on each returned event, the same way {@code notifications} already
+ * depends on it) — that's a one-way dependency on a lower-level module, not on any caller, so it
+ * doesn't compromise the "callable from anywhere" property above.
  */
 public interface ActivityService {
 

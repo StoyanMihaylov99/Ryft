@@ -11,6 +11,8 @@ import { Board as BoardModel } from '../../core/board/models';
 import { Issue, IssueStatus, Label, ProjectComponent } from '../../core/issue/models';
 import { NotificationService } from '../../core/notification/notification.service';
 import { Project, ProjectMember, ProjectRole } from '../../core/project/models';
+import { SavedFilter } from '../../core/search/models';
+import { Sprint } from '../../core/sprint/models';
 import { WorkflowScheme } from '../../core/workflow/models';
 import { BoardUpdateMessage } from '../../core/websocket/models';
 import { WebsocketService } from '../../core/websocket/websocket.service';
@@ -106,6 +108,22 @@ function workflowScheme(overrides: Partial<WorkflowScheme> = {}): WorkflowScheme
       { id: 't1', fromStatusId: 'todo', toStatusId: 'inprogress', toStatusName: 'In Progress', fromStatusName: 'To Do', name: null },
       { id: 't2', fromStatusId: 'inprogress', toStatusId: 'done', toStatusName: 'Done', fromStatusName: 'In Progress', name: null },
     ],
+    ...overrides,
+  };
+}
+
+function sprint(overrides: Partial<Sprint> = {}): Sprint {
+  return {
+    id: 's1',
+    projectId: 'p1',
+    name: 'Sprint 1',
+    goal: null,
+    state: 'ACTIVE',
+    startDate: null,
+    endDate: null,
+    committedPoints: null,
+    createdAt: '2024-01-01T00:00:00Z',
+    completedAt: null,
     ...overrides,
   };
 }
@@ -1132,6 +1150,855 @@ describe('Board', () => {
       boardUpdates$.next(boardUpdate({ eventType: 'issue.status_changed', actorId: 'u1' }));
 
       httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/board`);
+    });
+  });
+
+  function savedFilter(overrides: Partial<SavedFilter> = {}): SavedFilter {
+    return {
+      id: 'f1',
+      projectId: 'p1',
+      ownerId: 'u1',
+      name: 'My Bugs',
+      query: { types: ['BUG'] },
+      isShared: false,
+      createdAt: '2024-01-01T00:00:00Z',
+      ...overrides,
+    };
+  }
+
+  describe('structured filter builder panel', () => {
+    function flushFiltersPanelOpen(
+      workflow: WorkflowScheme = workflowScheme(),
+      sprints: Sprint[] = [],
+      savedFilters: SavedFilter[] = [],
+    ): void {
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflow);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush(sprints);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`).flush(savedFilters);
+    }
+
+    it('opens via ?panel=filters and lazily loads statuses, sprints and saved filters', () => {
+      flushInitialBoard(boardWith());
+
+      queryParamMap$.next(convertToParamMap({ panel: 'filters' }));
+      TestBed.tick();
+      expect(component.showFiltersPanel()).toBe(true);
+
+      flushFiltersPanelOpen(workflowScheme(), [sprint()], [savedFilter()]);
+
+      expect(component.workflowScheme()?.statuses).toHaveLength(3);
+      expect(component.sprints()).toEqual([sprint()]);
+      expect(component.savedFilters()).toEqual([savedFilter()]);
+    });
+
+    it('loads statuses, sprints and saved filters only the first time the panel opens', () => {
+      flushInitialBoard(boardWith());
+
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.toggleFiltersPanel();
+      component.toggleFiltersPanel();
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/workflow`);
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/sprints`);
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/filters`);
+    });
+
+    it('toggleFiltersPanel navigates to ?panel=filters when the panel is closed', () => {
+      flushInitialBoard(boardWith());
+
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      expect(router.navigate).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { panel: 'filters' }, replaceUrl: true }),
+      );
+    });
+
+    it('toggles a filter value on and off', () => {
+      flushInitialBoard(boardWith());
+
+      expect(component.isFilterValueSelected(component.filterLabelIds(), 'l1')).toBe(false);
+      component.toggleFilterLabel('l1');
+      expect(component.isFilterValueSelected(component.filterLabelIds(), 'l1')).toBe(true);
+      component.toggleFilterLabel('l1');
+      expect(component.isFilterValueSelected(component.filterLabelIds(), 'l1')).toBe(false);
+    });
+
+    it('typing into the search input updates filterText', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const input = fixture.debugElement.query(By.css('#filters-text-input'));
+      input.nativeElement.value = 'login bug';
+      input.nativeElement.dispatchEvent(new Event('input'));
+
+      expect(component.filterText()).toBe('login bug');
+    });
+
+    it('gives the search field a leading icon distinguishing it from the chip facets below', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const field = fixture.debugElement.query(By.css('.filter-search-field'));
+      expect(field.query(By.css('.filter-search-icon'))).toBeTruthy();
+      expect(field.query(By.css('#filters-text-input'))).toBeTruthy();
+    });
+
+    it('runSearch includes text in the request body when non-blank, trimmed', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('  login bug  ');
+      component.runSearch();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.body).toEqual({ text: 'login bug' });
+      req.flush([]);
+    });
+
+    it('runSearch omits text when blank or whitespace-only', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('   ');
+      component.runSearch();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.body).toEqual({});
+      req.flush([]);
+    });
+
+    it('sets a friendly error message when the search text exceeds the server’s length cap', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('x'.repeat(201));
+      component.runSearch();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/search`)
+        .flush({ message: 'Validation failed' }, { status: 400, statusText: 'Bad Request' });
+
+      expect(component.searching()).toBe(false);
+      expect(component.searchError()).toBe('Search text is too long — keep it under 200 characters.');
+    });
+
+    it('runSearch sends only the selected fields and stores the returned issues', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.toggleFilterAssignee('u1');
+      component.toggleFilterStatus('todo');
+      component.toggleFilterType('BUG');
+      component.runSearch();
+
+      expect(component.searching()).toBe(true);
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({
+        assigneeIds: ['u1'],
+        statusIds: ['todo'],
+        types: ['BUG'],
+      });
+      req.flush([issue('TRK-1', 'TODO', { type: 'BUG' })]);
+
+      expect(component.searching()).toBe(false);
+      expect(component.searchResults()?.map((i) => i.key)).toEqual(['TRK-1']);
+    });
+
+    it('sends no body fields when every filter is empty', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.runSearch();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.body).toEqual({});
+      req.flush([]);
+    });
+
+    it('clearFilters resets every field and the results', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.toggleFilterLabel('l1');
+      component.toggleFilterSprint('s1');
+      component.filterText.set('login bug');
+      component.runSearch();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`).flush([]);
+      expect(component.searchResults()).toEqual([]);
+
+      component.clearFilters();
+
+      expect(component.filterLabelIds()).toEqual([]);
+      expect(component.filterSprintIds()).toEqual([]);
+      expect(component.filterText()).toBe('');
+      expect(component.searchResults()).toBeNull();
+      expect(component.searchError()).toBeNull();
+    });
+
+    it('sets a friendly error message when the search request fails', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.runSearch();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/search`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.searching()).toBe(false);
+      expect(component.searchError()).toBe('Failed to search issues.');
+    });
+
+    it('hides the board grid while the panel is open and shows its own results area instead', () => {
+      flushInitialBoard(boardWith());
+      fixture.detectChanges();
+      expect(fixture.debugElement.query(By.css('.board'))).toBeTruthy();
+
+      queryParamMap$.next(convertToParamMap({ panel: 'filters' }));
+      TestBed.tick();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      expect(fixture.debugElement.query(By.css('.board'))).toBeFalsy();
+      expect(fixture.debugElement.query(By.css('.filters-panel'))).toBeTruthy();
+    });
+
+    // Its accessible name must not collide with a label/component a user might name "Search" —
+    // see the Filters panel's chip-list buttons below, which render arbitrary user-chosen names.
+    it('names the submit button unambiguously as "Search issues"', () => {
+      flushInitialBoard(boardWith());
+      queryParamMap$.next(convertToParamMap({ panel: 'filters' }));
+      TestBed.tick();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const submitButton = fixture.debugElement.query(By.css('.filter-actions .submit'));
+      expect(submitButton.nativeElement.textContent.trim()).toBe('Search issues');
+    });
+
+    it('resolves a matching issue’s assignee name and initials from the loaded members', () => {
+      flushInitialBoard(boardWith(), null, [projectMember('u1', 'MEMBER')]);
+
+      expect(component.assigneeNameFor(issue('TRK-1', 'TODO', { assigneeId: 'u1' }))).toBe('X');
+      expect(component.assigneeInitialsFor(issue('TRK-1', 'TODO', { assigneeId: 'u1' }))).toBe(
+        'X',
+      );
+    });
+
+    it('has no assignee name/initials for an unassigned issue or an unknown assignee id', () => {
+      flushInitialBoard(boardWith(), null, [projectMember('u1', 'MEMBER')]);
+
+      expect(component.assigneeNameFor(issue('TRK-1', 'TODO'))).toBeNull();
+      expect(component.assigneeInitialsFor(issue('TRK-1', 'TODO'))).toBeNull();
+      expect(
+        component.assigneeNameFor(issue('TRK-1', 'TODO', { assigneeId: 'unknown' })),
+      ).toBeNull();
+    });
+
+    it('shows each result’s status and assignee, since results can span every status at once', () => {
+      flushInitialBoard(boardWith(), null, [projectMember('u1', 'MEMBER')]);
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.runSearch();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/search`)
+        .flush([
+          issue('TRK-1', 'TODO', { assigneeId: 'u1' }),
+          issue('TRK-2', 'DONE', { assigneeId: null }),
+        ]);
+      fixture.detectChanges();
+
+      const rows = fixture.debugElement.queryAll(By.css('.filter-results-list .issue-card'));
+      expect(rows).toHaveLength(2);
+
+      const [assignedRow, unassignedRow] = rows;
+      expect(assignedRow.query(By.css('.filter-result-status')).nativeElement.textContent).toBe(
+        'TODO',
+      );
+      expect(
+        assignedRow.query(By.css('.filter-result-assignee')).nativeElement.textContent.trim(),
+      ).toContain('X');
+      expect(assignedRow.query(By.css('.filter-result-assignee.unassigned'))).toBeFalsy();
+
+      expect(unassignedRow.query(By.css('.filter-result-status')).nativeElement.textContent).toBe(
+        'DONE',
+      );
+      expect(unassignedRow.query(By.css('.filter-result-assignee.unassigned'))).toBeTruthy();
+      expect(
+        unassignedRow.query(By.css('.filter-result-assignee .visually-hidden')).nativeElement
+          .textContent,
+      ).toBe('Unassigned');
+    });
+
+    it('descriptionSnippetFor is null without active search text, even with a description', () => {
+      flushInitialBoard(boardWith());
+
+      expect(
+        component.descriptionSnippetFor(issue('TRK-1', 'TODO', { description: 'Fix the login flow' })),
+      ).toBeNull();
+    });
+
+    it('descriptionSnippetFor is null for an issue with no description', () => {
+      flushInitialBoard(boardWith());
+      component.filterText.set('login');
+
+      expect(component.descriptionSnippetFor(issue('TRK-1', 'TODO', { description: null }))).toBeNull();
+    });
+
+    it('descriptionSnippetFor returns the full description under the truncation length', () => {
+      flushInitialBoard(boardWith());
+      component.filterText.set('login');
+
+      expect(
+        component.descriptionSnippetFor(issue('TRK-1', 'TODO', { description: 'Fix the login flow' })),
+      ).toBe('Fix the login flow');
+    });
+
+    it('descriptionSnippetFor truncates a long description with an ellipsis', () => {
+      flushInitialBoard(boardWith());
+      component.filterText.set('login');
+
+      const snippet = component.descriptionSnippetFor(
+        issue('TRK-1', 'TODO', { description: 'x'.repeat(150) }),
+      );
+
+      expect(snippet).toHaveLength(121);
+      expect(snippet?.endsWith('…')).toBe(true);
+    });
+
+    it('descriptionSnippetFor truncates at a word boundary instead of cutting a word in half', () => {
+      flushInitialBoard(boardWith());
+      component.filterText.set('login');
+      // Built so character 120 falls in the middle of "truncation" — a raw 120-char slice would
+      // read "...so we can verify the trunc…", cutting the word in half.
+      const description = 'x'.repeat(109) + ' so we can verify the truncation logic works correctly';
+
+      const snippet = component.descriptionSnippetFor(issue('TRK-1', 'TODO', { description }));
+      const truncatedContent = snippet!.slice(0, -1);
+
+      expect(snippet?.endsWith('…')).toBe(true);
+      // Whatever the snippet kept must be a genuine prefix of the original text, and whatever
+      // comes right after it in the original text must be whitespace (or nothing) — never a
+      // mid-word cut like "...trunc" from "truncation".
+      expect(description.startsWith(truncatedContent)).toBe(true);
+      const nextChar = description[truncatedContent.length];
+      expect(nextChar === undefined || /\s/.test(nextChar)).toBe(true);
+      expect(truncatedContent).not.toMatch(/trunc$/);
+    });
+
+    it('renders a description snippet only for results with a description, while a search is active', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('login');
+      component.runSearch();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/search`)
+        .flush([
+          issue('TRK-1', 'TODO', { description: 'Fix the login flow' }),
+          issue('TRK-2', 'TODO', { description: null }),
+        ]);
+      fixture.detectChanges();
+
+      const rows = fixture.debugElement.queryAll(By.css('.filter-results-list .issue-card'));
+      expect(rows[0].query(By.css('.filter-result-snippet')).nativeElement.textContent).toBe(
+        'Fix the login flow',
+      );
+      expect(rows[1].query(By.css('.filter-result-snippet'))).toBeFalsy();
+    });
+
+    it('activeFiltersSummary is null when no filter is active', () => {
+      flushInitialBoard(boardWith());
+
+      expect(component.activeFiltersSummary()).toBeNull();
+    });
+
+    it('activeFiltersSummary names a single selection per group and counts a multi-selected group', () => {
+      flushInitialBoard(
+        boardWith(),
+        null,
+        [projectMember('u1', 'MEMBER')],
+        [label({ id: 'l1', name: 'Bug reports' }), label({ id: 'l2', name: 'Docs' })],
+      );
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('login');
+      component.toggleFilterAssignee('u1');
+      component.toggleFilterStatus('todo');
+      component.toggleFilterLabel('l1');
+      component.toggleFilterLabel('l2');
+
+      expect(component.activeFiltersSummary()).toBe('Filtered by: "login" · X · To Do · 2 labels');
+    });
+
+    it('activeFiltersSummary pluralizes a multi-selected status group as "statuses", not "statuss"', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.toggleFilterStatus('todo');
+      component.toggleFilterStatus('inprogress');
+
+      expect(component.activeFiltersSummary()).toBe('Filtered by: 2 statuses');
+    });
+
+    it('shows the active-filters summary next to the results count once a search has run', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.filterText.set('login');
+      component.runSearch();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`).flush([]);
+      fixture.detectChanges();
+
+      const summary = fixture.debugElement.query(By.css('.filter-active-summary'));
+      expect(summary.nativeElement.textContent).toBe('Filtered by: "login"');
+    });
+
+    it('hides the active-filters summary when a search runs with nothing selected', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.runSearch();
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`).flush([]);
+      fixture.detectChanges();
+
+      expect(fixture.debugElement.query(By.css('.filter-active-summary'))).toBeFalsy();
+    });
+  });
+
+  describe('collapsible facet sections', () => {
+    function flushFiltersPanelOpen(
+      workflow: WorkflowScheme = workflowScheme(),
+      sprints: Sprint[] = [],
+      savedFilters: SavedFilter[] = [],
+    ): void {
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflow);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush(sprints);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`).flush(savedFilters);
+    }
+
+    // Each facet heading id lives on its <summary> — see board.html — so its enclosing <details> is
+    // the nearest ancestor.
+    function detailsFor(headingId: string): HTMLDetailsElement {
+      return fixture.debugElement.query(By.css(`#${headingId}`)).nativeElement.closest('details');
+    }
+
+    it('renders every facet section collapsed by default when no filter is active', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      expect(detailsFor('filters-assignee-heading').open).toBe(false);
+      expect(detailsFor('filters-status-heading').open).toBe(false);
+      expect(detailsFor('filters-type-heading').open).toBe(false);
+      expect(detailsFor('filters-sprint-heading').open).toBe(false);
+    });
+
+    it('auto-expands a section that already has a selection when the panel opens, leaving empty ones collapsed', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFilterStatus('todo');
+
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().status).toBe(true);
+      expect(detailsFor('filters-status-heading').open).toBe(true);
+      expect(component.filterSectionExpanded().assignee).toBe(false);
+      expect(detailsFor('filters-assignee-heading').open).toBe(false);
+    });
+
+    it('auto-expands sections populated by loadSavedFilter(), leaving still-empty ones collapsed', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen(workflowScheme(), [], [
+        savedFilter({ query: { assigneeIds: ['u1'], types: ['BUG'] } }),
+      ]);
+      fixture.detectChanges();
+      expect(component.filterSectionExpanded().assignee).toBe(false);
+
+      component.loadSavedFilter(component.savedFilters()![0]);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`).flush([]);
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().assignee).toBe(true);
+      expect(component.filterSectionExpanded().type).toBe(true);
+      expect(component.filterSectionExpanded().status).toBe(false);
+      expect(detailsFor('filters-assignee-heading').open).toBe(true);
+      expect(detailsFor('filters-status-heading').open).toBe(false);
+    });
+
+    it('shows no count badge on an empty section, and a badge that updates as chips are toggled', () => {
+      flushInitialBoard(boardWith(), null, [
+        projectMember('u1', 'MEMBER'),
+        projectMember('u2', 'MEMBER'),
+      ]);
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      expect(
+        fixture.debugElement.query(By.css('#filters-assignee-heading .filter-facet-count')),
+      ).toBeFalsy();
+
+      component.toggleFilterAssignee('u1');
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement
+          .query(By.css('#filters-assignee-heading .filter-facet-count'))
+          .nativeElement.textContent.trim(),
+      ).toBe('1');
+
+      component.toggleFilterAssignee('u2');
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement
+          .query(By.css('#filters-assignee-heading .filter-facet-count'))
+          .nativeElement.textContent.trim(),
+      ).toBe('2');
+    });
+
+    it('toggling a section open or closed is purely presentational and leaves filter signals untouched', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const details = detailsFor('filters-assignee-heading');
+      details.open = true;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().assignee).toBe(true);
+      expect(component.filterAssigneeIds()).toEqual([]);
+
+      details.open = false;
+      details.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().assignee).toBe(false);
+      expect(component.filterAssigneeIds()).toEqual([]);
+    });
+
+    it('lets multiple sections stay open at once — expanding one does not collapse another', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const assignee = detailsFor('filters-assignee-heading');
+      assignee.open = true;
+      assignee.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+
+      const status = detailsFor('filters-status-heading');
+      status.open = true;
+      status.dispatchEvent(new Event('toggle'));
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().assignee).toBe(true);
+      expect(component.filterSectionExpanded().status).toBe(true);
+    });
+
+    it('clearFilters() re-collapses every section it just emptied out', () => {
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      const status = detailsFor('filters-status-heading');
+      status.open = true;
+      status.dispatchEvent(new Event('toggle'));
+      component.toggleFilterStatus('todo');
+      fixture.detectChanges();
+      expect(component.filterSectionExpanded().status).toBe(true);
+      expect(status.open).toBe(true);
+
+      component.clearFilters();
+      fixture.detectChanges();
+
+      expect(component.filterSectionExpanded().status).toBe(false);
+      expect(detailsFor('filters-status-heading').open).toBe(false);
+    });
+
+    it('gives the Assignee summary an accessible name with no stray space before the selection count', () => {
+      flushInitialBoard(boardWith(), null, [projectMember('u1', 'MEMBER')]);
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      component.toggleFilterAssignee('u1');
+      fixture.detectChanges();
+
+      const summary: HTMLElement = fixture.debugElement.query(
+        By.css('#filters-assignee-heading'),
+      ).nativeElement;
+      const accessibleText = Array.from(summary.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE || node.nodeType === Node.ELEMENT_NODE)
+        .filter((node) => !(node instanceof HTMLElement && node.getAttribute('aria-hidden')))
+        .map((node) => node.textContent)
+        .join('')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      expect(accessibleText).toBe('Assignee, 1 selected');
+    });
+  });
+
+  describe('saved filters', () => {
+    function flushFiltersPanelOpen(savedFilters: SavedFilter[] = []): void {
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/workflow`).flush(workflowScheme());
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush([]);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`).flush(savedFilters);
+    }
+
+    it('loading a saved filter populates the filter selections and runs a search', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([
+        savedFilter({
+          query: { assigneeIds: ['u1'], labelIds: ['l1'], types: ['BUG'] },
+        }),
+      ]);
+
+      component.loadSavedFilter(component.savedFilters()![0]);
+
+      expect(component.filterAssigneeIds()).toEqual(['u1']);
+      expect(component.filterLabelIds()).toEqual(['l1']);
+      expect(component.filterTypes()).toEqual(['BUG']);
+      expect(component.filterStatusIds()).toEqual([]);
+      expect(component.filterText()).toBe('');
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.body).toEqual({ assigneeIds: ['u1'], labelIds: ['l1'], types: ['BUG'] });
+      req.flush([]);
+    });
+
+    it('loading a saved filter with a free-text query populates filterText', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([savedFilter({ query: { text: 'login bug' } })]);
+
+      component.loadSavedFilter(component.savedFilters()![0]);
+
+      expect(component.filterText()).toBe('login bug');
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`);
+      expect(req.request.body).toEqual({ text: 'login bug' });
+      req.flush([]);
+    });
+
+    it('renders a Remove action only for the caller’s own saved filters', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([
+        savedFilter({ id: 'own', ownerId: 'u1', name: 'Mine' }),
+        savedFilter({ id: 'theirs', ownerId: 'u2', name: 'Theirs', isShared: true }),
+      ]);
+      fixture.detectChanges();
+
+      const rows = fixture.debugElement.queryAll(By.css('.saved-filter-row'));
+      expect(rows).toHaveLength(2);
+      expect(rows[0].query(By.css('.remove-btn'))).toBeTruthy();
+      expect(rows[1].query(By.css('.remove-btn'))).toBeFalsy();
+      expect(rows[1].query(By.css('.saved-filter-badge')).nativeElement.textContent.trim()).toBe(
+        'Shared',
+      );
+    });
+
+    it('shows the Shared badge for the owner’s own shared filter too, not just other members’', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([
+        savedFilter({ id: 'own-shared', ownerId: 'u1', name: 'Mine', isShared: true }),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.debugElement.query(By.css('.saved-filter-row'));
+      expect(row.query(By.css('.saved-filter-badge'))).toBeTruthy();
+    });
+
+    it('hides the Shared badge’s text from assistive tech, replacing it with a status cue distinct from the filter name', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([
+        savedFilter({ id: 'theirs', ownerId: 'u2', name: 'Theirs', isShared: true }),
+      ]);
+      fixture.detectChanges();
+
+      const row = fixture.debugElement.query(By.css('.saved-filter-row'));
+      expect(row.query(By.css('.saved-filter-badge')).attributes['aria-hidden']).toBe('true');
+      expect(row.query(By.css('.visually-hidden')).nativeElement.textContent).toContain(
+        'shared with project',
+      );
+    });
+
+    it('gives each Load/Remove button a per-filter accessible name', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([savedFilter({ id: 'f1', ownerId: 'u1', name: 'Team Stories' })]);
+      fixture.detectChanges();
+
+      const row = fixture.debugElement.query(By.css('.saved-filter-row'));
+      expect(row.query(By.css('.load-filter-btn')).attributes['aria-label']).toBe(
+        "Load 'Team Stories'",
+      );
+      expect(row.query(By.css('.remove-btn')).attributes['aria-label']).toBe(
+        "Remove 'Team Stories'",
+      );
+    });
+
+    it('announces Save/Load/Remove outcomes through a live region', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([savedFilter({ id: 'f1', ownerId: 'u1', name: 'Team Stories' })]);
+
+      component.loadSavedFilter(component.savedFilters()![0]);
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/search`).flush([]);
+      expect(component.savedFilterStatusMessage()).toBe("Loaded 'Team Stories'.");
+
+      component.newSavedFilterName.set('New One');
+      component.submitSaveFilter();
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`)
+        .flush(savedFilter({ id: 'f2', ownerId: 'u1', name: 'New One' }));
+      expect(component.savedFilterStatusMessage()).toBe("Filter 'New One' saved.");
+
+      component.deleteSavedFilter('f1');
+      httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/filters/f1`).flush(null);
+      expect(component.savedFilterStatusMessage()).toBe("Filter 'Team Stories' removed.");
+    });
+
+    it('deletes a saved filter optimistically and restores it on failure', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen([savedFilter({ id: 'f1', ownerId: 'u1' })]);
+
+      component.deleteSavedFilter('f1');
+      expect(component.savedFilters()).toEqual([]);
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/filters/f1`)
+        .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+      expect(component.savedFilters()).toEqual([savedFilter({ id: 'f1', ownerId: 'u1' })]);
+      expect(component.savedFiltersError()).toContain('Failed to delete');
+    });
+
+    it('submitSaveFilter builds the current selections into the request body', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.toggleFilterType('BUG');
+      component.toggleFilterLabel('l1');
+      component.newSavedFilterName.set('My Bugs');
+      component.newSavedFilterShared.set(false);
+      component.submitSaveFilter();
+
+      const req = httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`);
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({
+        name: 'My Bugs',
+        query: { types: ['BUG'], labelIds: ['l1'] },
+        isShared: false,
+      });
+      req.flush(savedFilter({ name: 'My Bugs', query: { types: ['BUG'], labelIds: ['l1'] } }));
+
+      expect(component.savedFilters()).toEqual([
+        savedFilter({ name: 'My Bugs', query: { types: ['BUG'], labelIds: ['l1'] } }),
+      ]);
+      expect(component.newSavedFilterName()).toBe('');
+    });
+
+    it('does not submit when the saved filter name is blank', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.newSavedFilterName.set('   ');
+      component.submitSaveFilter();
+
+      httpMock.expectNone(`${environment.apiBaseUrl}/projects/TRK/filters`);
+    });
+
+    it('hides the share checkbox for a Viewer', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'VIEWER');
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+      fixture.detectChanges();
+
+      expect(component.canShareFilter()).toBe(false);
+      expect(fixture.debugElement.query(By.css('.saved-filter-share-label'))).toBeFalsy();
+    });
+
+    it('surfaces a clear error when a Viewer’s attempt to share a filter is rejected', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith(), 'VIEWER');
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.newSavedFilterName.set('Team filter');
+      component.newSavedFilterShared.set(true);
+      component.submitSaveFilter();
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`)
+        .flush({ message: 'Viewers cannot share filters' }, { status: 403, statusText: 'Forbidden' });
+
+      expect(component.savingFilter()).toBe(false);
+      expect(component.savedFiltersError()).toBe(
+        'Only project members other than Viewers can share a filter — save it as private instead.',
+      );
+    });
+
+    it('surfaces a clear error when saving a duplicate filter name', () => {
+      currentUserId = 'u1';
+      flushInitialBoard(boardWith());
+      component.toggleFiltersPanel();
+      flushFiltersPanelOpen();
+
+      component.newSavedFilterName.set('My Bugs');
+      component.submitSaveFilter();
+
+      httpMock
+        .expectOne(`${environment.apiBaseUrl}/projects/TRK/filters`)
+        .flush({ message: 'already exists' }, { status: 409, statusText: 'Conflict' });
+
+      expect(component.savedFiltersError()).toBe('You already have a saved filter with that name.');
     });
   });
 });

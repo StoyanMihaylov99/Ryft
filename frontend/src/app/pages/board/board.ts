@@ -18,6 +18,7 @@ import {
   canChangeStatus,
   canManageIssues as canManageIssuesPermission,
   canManageProjectSettings,
+  canShareFilter as canShareFilterPermission,
   isOwner as isOwnerPermission,
 } from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
@@ -33,6 +34,10 @@ import {
   UpdateLabelRequest,
 } from '../../core/issue/models';
 import { IssueService } from '../../core/issue/issue.service';
+import { CreateSavedFilterRequest, IssueSearchRequest, SavedFilter } from '../../core/search/models';
+import { SearchService } from '../../core/search/search.service';
+import { Sprint } from '../../core/sprint/models';
+import { SprintService } from '../../core/sprint/sprint.service';
 import {
   WorkflowScheme,
   WorkflowStatusEdit,
@@ -41,6 +46,7 @@ import {
 import { WorkflowService } from '../../core/workflow/workflow.service';
 import { WebsocketService } from '../../core/websocket/websocket.service';
 import { ComponentChip } from '../../shared/component-chip/component-chip';
+import { initials } from '../../shared/initials';
 import { IssueCard } from '../../shared/issue-card/issue-card';
 import { LabelChip } from '../../shared/label-chip/label-chip';
 import { IssueDetailPanel } from './issue-detail-panel/issue-detail-panel';
@@ -52,6 +58,9 @@ const BOARD_RELOAD_EVENT_TYPES = new Set([
   'issue.status_changed',
   'issue.assignee_changed',
 ]);
+
+/** The Filters panel's six collapsible facet groups — see `filterSectionExpanded` below. */
+type FilterFacet = 'assignee' | 'status' | 'type' | 'sprint' | 'labels' | 'components';
 
 @Component({
   imports: [
@@ -66,7 +75,7 @@ const BOARD_RELOAD_EVENT_TYPES = new Set([
   ],
   selector: 'app-board',
   templateUrl: './board.html',
-  styleUrls: ['./board.css', './board-workflow.css'],
+  styleUrls: ['./board.css', './board-workflow.css', './board-filters.css'],
 })
 export class Board {
   private readonly route = inject(ActivatedRoute);
@@ -75,6 +84,8 @@ export class Board {
   private readonly issueService = inject(IssueService);
   private readonly projectService = inject(ProjectService);
   private readonly workflowService = inject(WorkflowService);
+  private readonly sprintService = inject(SprintService);
+  private readonly searchService = inject(SearchService);
   private readonly authService = inject(AuthService);
   private readonly websocketService = inject(WebsocketService);
   private readonly formBuilder = inject(FormBuilder);
@@ -95,14 +106,22 @@ export class Board {
   readonly canManageWorkflow = computed(() => canManageProjectSettings(this.myRole()));
   /** A Viewer is fully read-only — no drag-and-drop status changes. */
   readonly canDragStatus = computed(() => canChangeStatus(this.myRole()));
+  /** A Viewer may still save a private filter for themselves, just not share it project-wide. */
+  readonly canShareFilter = computed(() => canShareFilterPermission(this.myRole()));
   readonly isOwner = computed(() => isOwnerPermission(this.myRole()));
   readonly currentUserId = computed(() => this.authService.currentUser()?.id ?? null);
 
   /** Members/Workflow/Labels & components are project-settings panels, not board content — while one
    *  is open the board grid and its filters are hidden so the panel reads as its own focused view,
-   *  rather than one more thing stacked above the still-visible Kanban board. */
+   *  rather than one more thing stacked above the still-visible Kanban board. The Filters panel is
+   *  included here for a different reason: it renders its own filtered issue list in place of the
+   *  board grid, so showing both at once would just be two competing views of overlapping issues. */
   readonly showingPanel = computed(
-    () => this.showMembersPanel() || this.showLabelsPanel() || this.showWorkflowPanel(),
+    () =>
+      this.showMembersPanel() ||
+      this.showLabelsPanel() ||
+      this.showWorkflowPanel() ||
+      this.showFiltersPanel(),
   );
 
   readonly members = signal<ProjectMember[]>([]);
@@ -174,6 +193,61 @@ export class Board {
   readonly isFiltering = computed(
     () => this.labelFilter() !== null || this.componentFilter() !== null,
   );
+
+  /** Structured, server-side, multi-field filter builder (assignee/status/label/type/sprint) hitting
+   *  POST /projects/{projectKey}/search — deliberately separate from labelFilter/componentFilter
+   *  above (a client-side, single-value quick filter over the already-loaded board): different
+   *  request shape, its own results list, no shared state. Don't try to merge the two. */
+  readonly showFiltersPanel = signal(false);
+  readonly filterAssigneeIds = signal<string[]>([]);
+  readonly filterStatusIds = signal<string[]>([]);
+  readonly filterLabelIds = signal<string[]>([]);
+  readonly filterComponentIds = signal<string[]>([]);
+  readonly filterTypes = signal<IssueType[]>([]);
+  readonly filterSprintIds = signal<string[]>([]);
+  readonly filterText = signal('');
+  /** Each of the six facet `<details>` sections' open/closed state — independent of one another
+   *  (not a single-open accordion), so filtering by both Assignee and Status doesn't force
+   *  re-expanding one after opening the other. Seeded (not just initialized once) by
+   *  `seedFilterSectionExpanded()` — a facet with an existing selection opens by default, an empty
+   *  one stays collapsed — but freely toggleable afterwards via `onFilterSectionToggle()`. */
+  readonly filterSectionExpanded = signal<Record<FilterFacet, boolean>>({
+    assignee: false,
+    status: false,
+    type: false,
+    sprint: false,
+    labels: false,
+    components: false,
+  });
+  /** Plain field, not a signal: only used to detect the rising edge of `showFiltersPanel` inside the
+   *  panel-param effect below, so `seedFilterSectionExpanded()` reseeds once per fresh panel open
+   *  rather than on every unrelated signal this effect also happens to read (`workflowScheme` etc.). */
+  private wasFiltersPanelOpen = false;
+  /** The issue types a search can filter on — SUBTASK is excluded because the backend never returns
+   *  subtasks from this endpoint regardless of what `types` contains. */
+  readonly filterTypeOptions: readonly IssueType[] = ['STORY', 'TASK', 'BUG', 'EPIC'];
+  /** `null` until the first search runs, distinct from `[]` (a search that ran and matched nothing) —
+   *  drives whether the results area shows its initial hint, an empty state, or the results list. */
+  readonly searchResults = signal<Issue[] | null>(null);
+  readonly searching = signal(false);
+  readonly searchError = signal<string | null>(null);
+  /** This project's sprints, loaded lazily the first time the Filters panel opens — like
+   *  `workflowScheme` above, `null` means "not loaded yet", not "no sprints exist". */
+  readonly sprints = signal<Sprint[] | null>(null);
+
+  /** Saved, shareable filters visible to the caller — their own (shared or not) plus every other
+   *  member's shared ones, exactly as returned by GET .../filters. Loaded lazily the first time the
+   *  Filters panel opens, like `workflowScheme`/`sprints` above; `null` means "not loaded yet". */
+  readonly savedFilters = signal<SavedFilter[] | null>(null);
+  readonly savedFiltersLoading = signal(false);
+  readonly savedFiltersError = signal<string | null>(null);
+  readonly newSavedFilterName = signal('');
+  readonly newSavedFilterShared = signal(false);
+  readonly savingFilter = signal(false);
+  /** Drives a visually-hidden `aria-live` region announcing Save/Load/Remove outcomes for the
+   *  saved-filters list — those actions only otherwise change on-screen state (a new row, a
+   *  repopulated filter builder), which a screen reader has no other way to notice. */
+  readonly savedFilterStatusMessage = signal<string | null>(null);
 
   /** Staged for the create-issue form — not sent until submitCreate(). */
   readonly createLabelIds = signal<string[]>([]);
@@ -253,13 +327,37 @@ export class Board {
       if (showWorkflow && !this.workflowScheme()) {
         this.loadWorkflow();
       }
+
+      const showFilters = panel === 'filters';
+      this.showFiltersPanel.set(showFilters);
+      this.searchError.set(null);
+      this.savedFiltersError.set(null);
+      // The status filter needs the workflow scheme too — open to any project member (unlike the
+      // Workflow admin panel above, which only loads it for Owner/Admin), so this doesn't gate on
+      // canManageWorkflow().
+      if (showFilters && !this.workflowScheme()) {
+        this.loadWorkflow();
+      }
+      if (showFilters && this.sprints() === null) {
+        this.loadSprints();
+      }
+      if (showFilters && this.savedFilters() === null) {
+        this.loadSavedFilters();
+      }
+      // Reseed only on the closed-to-open transition, not on every rerun this effect also does for
+      // workflowScheme/sprints/savedFilters arriving — otherwise a section the user manually
+      // collapsed mid-session would snap back open the moment one of those unrelated loads resolves.
+      if (showFilters && !this.wasFiltersPanelOpen) {
+        this.seedFilterSectionExpanded();
+      }
+      this.wasFiltersPanelOpen = showFilters;
     });
   }
 
   /** Navigates to reflect the panel change instead of mutating the panel signals directly, so the
    *  URL stays the single source of truth. `replaceUrl: true` keeps back-button behavior sane —
    *  toggling a panel open/closed doesn't spam browser history. */
-  private setPanel(panel: 'members' | 'workflow' | 'labels' | null): void {
+  private setPanel(panel: 'members' | 'workflow' | 'labels' | 'filters' | null): void {
     this.router.navigate([], { relativeTo: this.route, queryParams: { panel }, replaceUrl: true });
   }
 
@@ -520,6 +618,95 @@ export class Board {
     return this.epics().find((epic) => epic.id === issue.parentId)?.title ?? null;
   }
 
+  /** Unlike the Kanban board (where the column header already conveys status) or a single issue's
+   *  detail panel, the Filters panel's results list spans every status at once — so each row needs
+   *  its own status/assignee context. Resolved from `members()` (already loaded for the assignee
+   *  filter chips) rather than a field on `Issue`, which only carries `assigneeId`. */
+  assigneeNameFor(issue: Issue): string | null {
+    if (!issue.assigneeId) {
+      return null;
+    }
+    return this.members().find((member) => member.userId === issue.assigneeId)?.displayName ?? null;
+  }
+
+  assigneeInitialsFor(issue: Issue): string | null {
+    const name = this.assigneeNameFor(issue);
+    return name ? initials(name) : null;
+  }
+
+  /** A short excerpt of `issue.description`, shown only while a free-text search is active — the
+   *  backend has no `ts_headline`-style match highlighting to point at *where* the term matched, so
+   *  this just surfaces enough of the description for the user to see the connection themselves.
+   *  `null` (rendering nothing) both when no search text is active and when the issue has none. */
+  descriptionSnippetFor(issue: Issue): string | null {
+    if (!this.filterText().trim()) {
+      return null;
+    }
+    const description = issue.description?.trim();
+    if (!description) {
+      return null;
+    }
+    const maxLength = 120;
+    if (description.length <= maxLength) {
+      return description;
+    }
+    // Trim back to the last whitespace boundary within the slice so the snippet never cuts a
+    // word in half — e.g. "...verify the trunc…" would read as broken, "...verify the…" doesn't.
+    const truncated = description.slice(0, maxLength).replace(/\s+\S*$/, '').trimEnd();
+    return `${truncated}…`;
+  }
+
+  /** Single-line restatement of every active filter-builder selection, shown alongside the results
+   *  count so it stays visible once the filter-builder form itself has scrolled out of view. `null`
+   *  when no filter is active, so the template can skip rendering it entirely. */
+  readonly activeFiltersSummary = computed<string | null>(() => {
+    const text = this.filterText().trim();
+    const parts = [
+      text ? `"${text}"` : null,
+      this.filterGroupSummary(this.filterAssigneeIds(), 'assignee', (id) =>
+        this.members().find((member) => member.userId === id)?.displayName,
+      ),
+      this.filterGroupSummary(
+        this.filterStatusIds(),
+        'status',
+        (id) => this.workflowScheme()?.statuses.find((status) => status.id === id)?.name,
+        'statuses',
+      ),
+      this.filterGroupSummary(this.filterTypes(), 'type', (type) => type),
+      this.filterGroupSummary(this.filterSprintIds(), 'sprint', (id) =>
+        this.sprints()?.find((sprint) => sprint.id === id)?.name,
+      ),
+      this.filterGroupSummary(this.filterLabelIds(), 'label', (id) =>
+        this.labels().find((label) => label.id === id)?.name,
+      ),
+      this.filterGroupSummary(this.filterComponentIds(), 'component', (id) =>
+        this.components().find((component) => component.id === id)?.name,
+      ),
+    ].filter((part): part is string => part !== null);
+
+    return parts.length ? `Filtered by: ${parts.join(' · ')}` : null;
+  });
+
+  /** One summary token for a chip filter group — the selected value's own name when exactly one is
+   *  chosen, else a compact "N <plural>" count so a heavily multi-selected group (e.g. 5 labels)
+   *  can't blow up `activeFiltersSummary`'s single line. `plural` defaults to `${noun}s` (correct for
+   *  every group except "status", whose irregular plural is "statuses" — that call site passes it
+   *  explicitly rather than this helper guessing English pluralization rules). */
+  private filterGroupSummary<T>(
+    values: T[],
+    noun: string,
+    nameFor: (value: T) => string | null | undefined,
+    plural: string = `${noun}s`,
+  ): string | null {
+    if (!values.length) {
+      return null;
+    }
+    if (values.length === 1) {
+      return nameFor(values[0]) ?? noun;
+    }
+    return `${values.length} ${plural}`;
+  }
+
   /* An EPIC-typed card here (or on the backlog/sprint board) intentionally has no progress bar of
    * its own: the backend deliberately doesn't embed EpicProgress in IssueResponse to avoid an
    * extra query per Epic on every list/board response, so showing it per-card here would mean one
@@ -551,6 +738,222 @@ export class Board {
 
   visibleIssueCount(column: BoardColumn): number {
     return column.issues.filter((issue) => this.issueMatchesFilter(issue)).length;
+  }
+
+  toggleFiltersPanel(): void {
+    this.setPanel(this.showFiltersPanel() ? null : 'filters');
+  }
+
+  private loadSprints(): void {
+    this.sprintService.listForProject(this.projectKey).subscribe({
+      next: (sprints) => this.sprints.set(sprints),
+      // Non-critical: the sprint filter field just has no options.
+      error: () => {},
+    });
+  }
+
+  private loadSavedFilters(): void {
+    this.savedFiltersLoading.set(true);
+    this.savedFiltersError.set(null);
+    this.searchService.listSavedFilters(this.projectKey).subscribe({
+      next: (filters) => {
+        this.savedFiltersLoading.set(false);
+        this.savedFilters.set(filters);
+      },
+      error: () => {
+        this.savedFiltersLoading.set(false);
+        this.savedFiltersError.set('Failed to load saved filters.');
+      },
+    });
+  }
+
+  isFilterValueSelected<T>(values: T[], value: T): boolean {
+    return values.includes(value);
+  }
+
+  /** Derives each facet `<details>` section's initial open/closed state from whether that facet
+   *  already has a selection — called once per fresh panel open (see the constructor effect above),
+   *  again whenever `loadSavedFilter()` repopulates the filter signals so a saved filter's populated
+   *  facets aren't hidden behind a click, and again from `clearFilters()` so emptied-out sections
+   *  collapse back down instead of staying open on nothing. */
+  private seedFilterSectionExpanded(): void {
+    this.filterSectionExpanded.set({
+      assignee: this.filterAssigneeIds().length > 0,
+      status: this.filterStatusIds().length > 0,
+      type: this.filterTypes().length > 0,
+      sprint: this.filterSprintIds().length > 0,
+      labels: this.filterLabelIds().length > 0,
+      components: this.filterComponentIds().length > 0,
+    });
+  }
+
+  /** Purely presentational — toggling a `<details>` section never touches the filter signals
+   *  themselves, just which chip groups happen to be visible. */
+  onFilterSectionToggle(facet: FilterFacet, expanded: boolean): void {
+    this.filterSectionExpanded.update((state) => ({ ...state, [facet]: expanded }));
+  }
+
+  toggleFilterAssignee(userId: string): void {
+    this.filterAssigneeIds.update((ids) => this.toggleFilterValue(ids, userId));
+  }
+
+  toggleFilterStatus(statusId: string): void {
+    this.filterStatusIds.update((ids) => this.toggleFilterValue(ids, statusId));
+  }
+
+  toggleFilterLabel(labelId: string): void {
+    this.filterLabelIds.update((ids) => this.toggleFilterValue(ids, labelId));
+  }
+
+  toggleFilterComponent(componentId: string): void {
+    this.filterComponentIds.update((ids) => this.toggleFilterValue(ids, componentId));
+  }
+
+  toggleFilterType(type: IssueType): void {
+    this.filterTypes.update((types) => this.toggleFilterValue(types, type));
+  }
+
+  toggleFilterSprint(sprintId: string): void {
+    this.filterSprintIds.update((ids) => this.toggleFilterValue(ids, sprintId));
+  }
+
+  private toggleFilterValue<T>(values: T[], value: T): T[] {
+    return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
+  }
+
+  /** The current filter-builder selections as an `IssueSearchRequest` body — shared by `runSearch()`
+   *  and `submitSaveFilter()` so the two never drift apart on which fields count as "selected". */
+  private currentSearchRequest(): IssueSearchRequest {
+    const text = this.filterText().trim();
+    return {
+      ...(this.filterAssigneeIds().length ? { assigneeIds: this.filterAssigneeIds() } : {}),
+      ...(this.filterStatusIds().length ? { statusIds: this.filterStatusIds() } : {}),
+      ...(this.filterLabelIds().length ? { labelIds: this.filterLabelIds() } : {}),
+      ...(this.filterComponentIds().length ? { componentIds: this.filterComponentIds() } : {}),
+      ...(this.filterTypes().length ? { types: this.filterTypes() } : {}),
+      ...(this.filterSprintIds().length ? { sprintIds: this.filterSprintIds() } : {}),
+      ...(text ? { text } : {}),
+    };
+  }
+
+  /** Runs an ad-hoc structured search against POST /projects/{projectKey}/search. Nothing here is
+   *  persisted unless the caller explicitly saves it — see `submitSaveFilter()`. */
+  runSearch(): void {
+    this.searching.set(true);
+    this.searchError.set(null);
+    this.searchService.search(this.projectKey, this.currentSearchRequest()).subscribe({
+      next: (results) => {
+        this.searching.set(false);
+        this.searchResults.set(results);
+      },
+      error: (err) => {
+        this.searching.set(false);
+        this.searchError.set(this.searchErrorMessage(err));
+      },
+    });
+  }
+
+  /** `text` is the only `IssueSearchRequest` field the server validates (`@Size(max = 200)`), so a
+   *  400 here — normally unreachable given the text field's `maxlength` — means the search text
+   *  exceeds that cap. */
+  private searchErrorMessage(err: { status?: number }): string {
+    if (err.status === 400) {
+      return 'Search text is too long — keep it under 200 characters.';
+    }
+    return 'Failed to search issues.';
+  }
+
+  clearFilters(): void {
+    this.filterAssigneeIds.set([]);
+    this.filterStatusIds.set([]);
+    this.filterLabelIds.set([]);
+    this.filterComponentIds.set([]);
+    this.filterTypes.set([]);
+    this.filterSprintIds.set([]);
+    this.filterText.set('');
+    this.searchResults.set(null);
+    this.searchError.set(null);
+    this.seedFilterSectionExpanded();
+  }
+
+  /** Populates the filter builder from a saved filter's query and runs the search immediately, so
+   *  loading a saved filter is a single click straight to results — mirrors `clearFilters()`'s set
+   *  of fields, just filled in instead of emptied. */
+  loadSavedFilter(filter: SavedFilter): void {
+    this.filterAssigneeIds.set(filter.query.assigneeIds ?? []);
+    this.filterStatusIds.set(filter.query.statusIds ?? []);
+    this.filterLabelIds.set(filter.query.labelIds ?? []);
+    this.filterComponentIds.set(filter.query.componentIds ?? []);
+    this.filterTypes.set(filter.query.types ?? []);
+    this.filterSprintIds.set(filter.query.sprintIds ?? []);
+    this.filterText.set(filter.query.text ?? '');
+    this.seedFilterSectionExpanded();
+    this.runSearch();
+    this.savedFilterStatusMessage.set(`Loaded '${filter.name}'.`);
+  }
+
+  /** Owner-only, server-enforced (403 for anyone else) — the template only renders this action for
+   *  filters the caller owns, mirroring `deleteLabel`/`deleteComponent`'s optimistic-remove-then-
+   *  revert-on-error convention. */
+  deleteSavedFilter(filterId: string): void {
+    this.savedFiltersError.set(null);
+    const previous = this.savedFilters();
+    const removed = previous?.find((filter) => filter.id === filterId);
+    this.savedFilters.set((previous ?? []).filter((filter) => filter.id !== filterId));
+    this.searchService.deleteSavedFilter(this.projectKey, filterId).subscribe({
+      next: () => {
+        if (removed) {
+          this.savedFilterStatusMessage.set(`Filter '${removed.name}' removed.`);
+        }
+      },
+      error: () => {
+        this.savedFilters.set(previous);
+        this.savedFiltersError.set('Failed to delete the saved filter.');
+      },
+    });
+  }
+
+  /** Saves the current filter-builder selections as a named, optionally-shared filter. The share
+   *  checkbox is hidden for a Viewer (`canShareFilter()`), but this still sends whatever
+   *  `newSavedFilterShared()` holds rather than silently coercing it — so a stale `true` (e.g. a
+   *  role downgrade mid-session) surfaces the server's 403 instead of failing silently. */
+  submitSaveFilter(): void {
+    const name = this.newSavedFilterName().trim();
+    if (!name || this.savingFilter()) {
+      return;
+    }
+    this.savingFilter.set(true);
+    this.savedFiltersError.set(null);
+    const request: CreateSavedFilterRequest = {
+      name,
+      query: this.currentSearchRequest(),
+      isShared: this.newSavedFilterShared(),
+    };
+    this.searchService.createSavedFilter(this.projectKey, request).subscribe({
+      next: (filter) => {
+        this.savingFilter.set(false);
+        this.savedFilters.update((filters) =>
+          [...(filters ?? []), filter].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+        this.savedFilterStatusMessage.set(`Filter '${filter.name}' saved.`);
+        this.newSavedFilterName.set('');
+        this.newSavedFilterShared.set(false);
+      },
+      error: (err) => {
+        this.savingFilter.set(false);
+        this.savedFiltersError.set(this.saveFilterErrorMessage(err));
+      },
+    });
+  }
+
+  private saveFilterErrorMessage(err: { status?: number }): string {
+    if (err.status === 403) {
+      return 'Only project members other than Viewers can share a filter — save it as private instead.';
+    }
+    if (err.status === 409) {
+      return 'You already have a saved filter with that name.';
+    }
+    return 'Failed to save the filter.';
   }
 
   toggleLabelsPanel(): void {

@@ -8,12 +8,13 @@ import { AuthService } from '../../core/auth/auth.service';
 import { ProjectRole } from '../../core/project/models';
 import { canManageSprints as canManageSprintsPermission } from '../../core/project/permissions';
 import { ProjectService } from '../../core/project/project.service';
-import { Burndown, Sprint } from '../../core/sprint/models';
+import { Burndown, Sprint, Velocity } from '../../core/sprint/models';
 import { SprintService } from '../../core/sprint/sprint.service';
 import { BurndownChart } from '../../shared/burndown-chart/burndown-chart';
+import { VelocityChart } from '../../shared/velocity-chart/velocity-chart';
 
 @Component({
-  imports: [DatePipe, ReactiveFormsModule, RouterLink, Sidebar, BurndownChart],
+  imports: [DatePipe, ReactiveFormsModule, RouterLink, Sidebar, BurndownChart, VelocityChart],
   selector: 'app-sprints',
   templateUrl: './sprints.html',
   styleUrl: './sprints.css',
@@ -39,6 +40,10 @@ export class Sprints {
   readonly burndownLoading = signal(false);
   readonly burndownError = signal<string | null>(null);
 
+  readonly velocity = signal<Velocity | null>(null);
+  readonly velocityLoading = signal(true);
+  readonly velocityError = signal<string | null>(null);
+
   /** Only Owner/Admin plan, start or complete sprints. */
   readonly myRole = signal<ProjectRole | null>(null);
   readonly canManageSprints = computed(() => canManageSprintsPermission(this.myRole()));
@@ -54,6 +59,7 @@ export class Sprints {
   constructor() {
     this.loadSprints();
     this.loadProjectRole();
+    this.loadVelocity();
   }
 
   private loadProjectRole(): void {
@@ -75,6 +81,21 @@ export class Sprints {
       error: () => {
         this.loading.set(false);
         this.errorMessage.set('Failed to load sprints.');
+      },
+    });
+  }
+
+  private loadVelocity(): void {
+    this.velocityLoading.set(true);
+    this.velocityError.set(null);
+    this.sprintService.getVelocity(this.projectKey).subscribe({
+      next: (velocity) => {
+        this.velocityLoading.set(false);
+        this.velocity.set(velocity);
+      },
+      error: () => {
+        this.velocityLoading.set(false);
+        this.velocityError.set('Failed to load the velocity chart.');
       },
     });
   }

@@ -11,7 +11,11 @@ import com.application.ryft.activity.dto.ActivityEventResponse;
 import com.application.ryft.activity.dto.BoardUpdateMessage;
 import com.application.ryft.activity.entity.ActivityEvent;
 import com.application.ryft.activity.repository.ActivityEventRepository;
+import com.application.ryft.identity.user.dto.UserResponse;
+import com.application.ryft.identity.user.service.UserService;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +34,9 @@ class ActivityServiceImplTest {
     @Mock
     private SimpMessagingTemplate messagingTemplate;
 
+    @Mock
+    private UserService userService;
+
     private ActivityServiceImpl activityService;
 
     private final UUID projectId = UUID.randomUUID();
@@ -38,7 +45,7 @@ class ActivityServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        activityService = new ActivityServiceImpl(activityEventRepository, messagingTemplate);
+        activityService = new ActivityServiceImpl(activityEventRepository, messagingTemplate, userService);
         lenient().when(activityEventRepository.save(any(ActivityEvent.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -164,11 +171,55 @@ class ActivityServiceImplTest {
                 java.util.Map.of("title", "Title"));
         when(activityEventRepository.findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId))
                 .thenReturn(List.of(event));
+        when(userService.findAllByIds(Set.of(actorId))).thenReturn(Map.of());
 
         List<ActivityEventResponse> result = activityService.listForIssue(projectId, issueId);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).eventType()).isEqualTo(ActivityEventTypes.ISSUE_CREATED);
+    }
+
+    @Test
+    void listForIssueResolvesTheActorsDisplayName() {
+        ActivityEvent event = ActivityEvent.of(projectId, issueId, ActivityEventTypes.ISSUE_CREATED, actorId,
+                java.util.Map.of("title", "Title"));
+        when(activityEventRepository.findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId))
+                .thenReturn(List.of(event));
+        UserResponse actor = new UserResponse(actorId, "actor@example.com", "Ada Actor", null);
+        when(userService.findAllByIds(Set.of(actorId))).thenReturn(Map.of(actorId, actor));
+
+        List<ActivityEventResponse> result = activityService.listForIssue(projectId, issueId);
+
+        assertThat(result.get(0).actorDisplayName()).isEqualTo("Ada Actor");
+    }
+
+    @Test
+    void listForIssueLeavesActorDisplayNameNullWhenTheActorNoLongerResolves() {
+        ActivityEvent event = ActivityEvent.of(projectId, issueId, ActivityEventTypes.ISSUE_CREATED, actorId,
+                java.util.Map.of("title", "Title"));
+        when(activityEventRepository.findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId))
+                .thenReturn(List.of(event));
+        when(userService.findAllByIds(Set.of(actorId))).thenReturn(Map.of());
+
+        List<ActivityEventResponse> result = activityService.listForIssue(projectId, issueId);
+
+        assertThat(result.get(0).actorDisplayName()).isNull();
+    }
+
+    @Test
+    void listForIssueBatchesActorLookupIntoOneCallForMultipleEvents() {
+        UUID otherActorId = UUID.randomUUID();
+        ActivityEvent first = ActivityEvent.of(projectId, issueId, ActivityEventTypes.ISSUE_CREATED, actorId,
+                java.util.Map.of("title", "Title"));
+        ActivityEvent second = ActivityEvent.of(projectId, issueId, ActivityEventTypes.COMMENT_ADDED, otherActorId,
+                java.util.Map.of("comment_id", UUID.randomUUID(), "excerpt", "hi"));
+        when(activityEventRepository.findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId))
+                .thenReturn(List.of(first, second));
+        when(userService.findAllByIds(Set.of(actorId, otherActorId))).thenReturn(Map.of());
+
+        activityService.listForIssue(projectId, issueId);
+
+        verify(userService).findAllByIds(Set.of(actorId, otherActorId));
     }
 
     private ActivityEvent captureSaved() {

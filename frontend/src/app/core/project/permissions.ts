@@ -37,6 +37,13 @@ export function canComment(role: ProjectRole | null): boolean {
   return canChangeStatus(role);
 }
 
+/** Anyone but a Viewer (or a non-member) may share a saved filter project-wide — a private saved
+ *  filter is open to any member, including a Viewer. Mirrors
+ *  `SavedFilterServiceImpl.requireNotViewer`. */
+export function canShareFilter(role: ProjectRole | null): boolean {
+  return canChangeStatus(role);
+}
+
 export function isOwner(role: ProjectRole | null): boolean {
   return role === 'OWNER';
 }

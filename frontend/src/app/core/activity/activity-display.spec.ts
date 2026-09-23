@@ -8,6 +8,7 @@ function event(overrides: Partial<ActivityEvent> = {}): ActivityEvent {
     issueId: 'i1',
     eventType: 'issue.created',
     actorId: 'a1a1a1a1-0000-0000-0000-000000000000',
+    actorDisplayName: 'Ada Actor',
     timestamp: '2024-01-01T00:00:00Z',
     payload: {},
     ...overrides,
@@ -18,8 +19,16 @@ describe('activityText', () => {
   it('describes issue.created with the issue type', () => {
     const text = activityText(event({ eventType: 'issue.created', payload: { issue_type: 'STORY' } }));
 
-    expect(text).toContain('User a1a1a1a1');
+    expect(text).toContain('Ada Actor');
     expect(text).toContain('created this issue as a STORY');
+  });
+
+  it('falls back to a shortened id when the actor no longer resolves to a user', () => {
+    const text = activityText(
+      event({ eventType: 'issue.created', actorDisplayName: null, payload: { issue_type: 'STORY' } }),
+    );
+
+    expect(text).toContain('User a1a1a1a1');
   });
 
   it('describes issue.status_changed with the from/to status names', () => {

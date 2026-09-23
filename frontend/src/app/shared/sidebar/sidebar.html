@@ -85,6 +85,20 @@
       </a>
       <a
         [routerLink]="['/projects', key, 'board']"
+        [queryParams]="{ panel: 'filters' }"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="exactMatch"
+        class="nav-item nav-item--sub"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16" />
+          <path d="M7 12h10" />
+          <path d="M10 18h4" />
+        </svg>
+        <span>Filters</span>
+      </a>
+      <a
+        [routerLink]="['/projects', key, 'board']"
         [queryParams]="{ panel: 'members' }"
         routerLinkActive="active"
         [routerLinkActiveOptions]="exactMatch"

@@ -7,7 +7,7 @@ import { environment } from '../../../environments/environment';
 import { AuthService } from '../../core/auth/auth.service';
 import { NotificationService } from '../../core/notification/notification.service';
 import { Project, ProjectRole } from '../../core/project/models';
-import { Burndown, Sprint } from '../../core/sprint/models';
+import { Burndown, Sprint, Velocity } from '../../core/sprint/models';
 import { Sprints } from './sprints';
 
 function project(callerRole: ProjectRole | null = null): Project {
@@ -58,6 +58,23 @@ function burndown(overrides: Partial<Burndown> = {}): Burndown {
   };
 }
 
+function velocity(overrides: Partial<Velocity> = {}): Velocity {
+  return {
+    projectId: 'p1',
+    projectKey: 'TRK',
+    sprints: [
+      {
+        sprintId: 's1',
+        sprintName: 'Sprint 1',
+        committedPoints: 10,
+        completedPoints: 8,
+        completedAt: '2026-01-15T00:00:00Z',
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe('Sprints', () => {
   let fixture: ComponentFixture<Sprints>;
   let component: Sprints;
@@ -100,9 +117,14 @@ describe('Sprints', () => {
     httpMock.verify();
   });
 
-  function flushInitial(sprints: Sprint[], callerRole: ProjectRole | null = null): void {
+  function flushInitial(
+    sprints: Sprint[],
+    callerRole: ProjectRole | null = null,
+    velocityValue: Velocity = velocity(),
+  ): void {
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush(sprints);
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project(callerRole));
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/velocity`).flush(velocityValue);
   }
 
   it('loads and renders the project sprints', () => {
@@ -120,9 +142,32 @@ describe('Sprints', () => {
       .expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`)
       .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
     httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project());
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/velocity`).flush(velocity());
 
     expect(component.loading()).toBe(false);
     expect(component.errorMessage()).toBe('Failed to load sprints.');
+  });
+
+  it('loads the velocity chart on init and renders it', () => {
+    flushInitial([], null, velocity());
+    fixture.detectChanges();
+
+    expect(component.velocityLoading()).toBe(false);
+    expect(component.velocity()?.sprints).toHaveLength(1);
+    expect(fixture.debugElement.query(By.css('app-velocity-chart'))).not.toBeNull();
+  });
+
+  it('reports an error when loading the velocity chart fails', () => {
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK/sprints`).flush([]);
+    httpMock.expectOne(`${environment.apiBaseUrl}/projects/TRK`).flush(project());
+    httpMock
+      .expectOne(`${environment.apiBaseUrl}/projects/TRK/velocity`)
+      .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+    fixture.detectChanges();
+
+    expect(component.velocityLoading()).toBe(false);
+    expect(component.velocityError()).toBe('Failed to load the velocity chart.');
+    expect(fixture.debugElement.query(By.css('app-velocity-chart'))).toBeNull();
   });
 
   it('canManageSprints is true for an Owner and false for a plain Member', () => {
