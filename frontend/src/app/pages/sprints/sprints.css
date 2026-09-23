@@ -117,6 +117,21 @@ h1 {
   margin-bottom: 1.25rem;
 }
 
+.velocity-card {
+  padding: 1.25rem;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 1.25rem;
+}
+
+.section-heading {
+  margin: 0 0 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .create-card form {
   display: flex;
   align-items: flex-end;

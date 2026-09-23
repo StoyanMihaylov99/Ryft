@@ -3,6 +3,7 @@ package com.application.ryft.issues.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -16,6 +17,7 @@ import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
+import com.application.ryft.issues.dto.IssueSearchCriteria;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssueKeySequence;
@@ -55,6 +57,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
 class IssueServiceTest {
@@ -484,7 +487,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.delete(callerId, "TRK-1"))
                 .isInstanceOf(InsufficientProjectRoleException.class);
-        verify(issueRepository, never()).delete(any());
+        verify(issueRepository, never()).delete(any(Issue.class));
         verify(commentRepository, never()).deleteAllByIssueId(any());
     }
 
@@ -499,7 +502,7 @@ class IssueServiceTest {
 
         assertThatThrownBy(() -> issueService.delete(callerId, "TRK-1"))
                 .isInstanceOf(InsufficientProjectRoleException.class);
-        verify(issueRepository, never()).delete(any());
+        verify(issueRepository, never()).delete(any(Issue.class));
     }
 
     @Test
@@ -560,6 +563,129 @@ class IssueServiceTest {
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).statusId()).isEqualTo(doneStatusId);
+    }
+
+    @Test
+    void searchWithNoFiltersDelegatesEmptyCriteriaAndReturnsMappedResponses() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        Issue issue = new Issue(projectId, "TRK-1", IssueType.STORY, "Title", null, IssuePriority.MEDIUM, null,
+                callerId, 1000.0);
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, null, null, null, null, null, null);
+        when(issueRepository.search(eq(projectId), eq(criteria), any(Sort.class))).thenReturn(List.of(issue));
+
+        List<IssueResponse> result = issueService.search(callerId, "TRK", criteria);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).key()).isEqualTo("TRK-1");
+    }
+
+    @Test
+    void searchWithASingleFieldFilterDelegatesThatCriteriaUnchanged() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, List.of(doneStatusId), null, null, null, null, null);
+        when(issueRepository.search(eq(projectId), any(IssueSearchCriteria.class), any(Sort.class)))
+                .thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        ArgumentCaptor<IssueSearchCriteria> captor = ArgumentCaptor.forClass(IssueSearchCriteria.class);
+        verify(issueRepository).search(eq(projectId), captor.capture(), any(Sort.class));
+        assertThat(captor.getValue().statusIds()).containsExactly(doneStatusId);
+        assertThat(captor.getValue().assigneeIds()).isNull();
+    }
+
+    @Test
+    void searchWithMultipleFieldsAndsThemTogether() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        UUID assigneeId = UUID.randomUUID();
+        IssueSearchCriteria criteria = new IssueSearchCriteria(List.of(assigneeId), List.of(doneStatusId), null,
+                null, List.of(IssueType.BUG), null, null);
+        when(issueRepository.search(eq(projectId), any(IssueSearchCriteria.class), any(Sort.class)))
+                .thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        ArgumentCaptor<IssueSearchCriteria> captor = ArgumentCaptor.forClass(IssueSearchCriteria.class);
+        verify(issueRepository).search(eq(projectId), captor.capture(), any(Sort.class));
+        assertThat(captor.getValue().assigneeIds()).containsExactly(assigneeId);
+        assertThat(captor.getValue().statusIds()).containsExactly(doneStatusId);
+        assertThat(captor.getValue().types()).containsExactly(IssueType.BUG);
+    }
+
+    @Test
+    void searchWithMultipleValuesInOneFieldOrsThemTogether() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        UUID firstAssignee = UUID.randomUUID();
+        UUID secondAssignee = UUID.randomUUID();
+        IssueSearchCriteria criteria = new IssueSearchCriteria(List.of(firstAssignee, secondAssignee), null, null,
+                null, null, null, null);
+        when(issueRepository.search(eq(projectId), any(IssueSearchCriteria.class), any(Sort.class)))
+                .thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        ArgumentCaptor<IssueSearchCriteria> captor = ArgumentCaptor.forClass(IssueSearchCriteria.class);
+        verify(issueRepository).search(eq(projectId), captor.capture(), any(Sort.class));
+        assertThat(captor.getValue().assigneeIds()).containsExactly(firstAssignee, secondAssignee);
+    }
+
+    /**
+     * {@code IssueServiceImpl.search} itself just forwards {@code criteria} to
+     * {@code IssueRepository#search} unchanged — the actual {@code text} matching/AND/empty-result logic
+     * lives in that repository's default method and {@code IssueSpecifications}, exercised against a real
+     * Postgres in {@code ProjectSearchControllerIT} (a Mockito mock's default method isn't invoked, so it
+     * can't be meaningfully asserted here). This pins the wiring: {@code text} passes through untouched,
+     * same as every other field.
+     */
+    @Test
+    void searchWithTextFilterDelegatesCriteriaUnchanged() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, null, null, null, null, null, "login bug");
+        when(issueRepository.search(eq(projectId), any(IssueSearchCriteria.class), any(Sort.class)))
+                .thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        ArgumentCaptor<IssueSearchCriteria> captor = ArgumentCaptor.forClass(IssueSearchCriteria.class);
+        verify(issueRepository).search(eq(projectId), captor.capture(), any(Sort.class));
+        assertThat(captor.getValue().text()).isEqualTo("login bug");
+    }
+
+    @Test
+    void searchWithTextAndAnotherFieldDelegatesBothCriteriaUnchanged() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, List.of(doneStatusId), null, null, null, null,
+                "login bug");
+        when(issueRepository.search(eq(projectId), any(IssueSearchCriteria.class), any(Sort.class)))
+                .thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        ArgumentCaptor<IssueSearchCriteria> captor = ArgumentCaptor.forClass(IssueSearchCriteria.class);
+        verify(issueRepository).search(eq(projectId), captor.capture(), any(Sort.class));
+        assertThat(captor.getValue().text()).isEqualTo("login bug");
+        assertThat(captor.getValue().statusIds()).containsExactly(doneStatusId);
+    }
+
+    @Test
+    void searchWithBlankTextBehavesLikeNoFilterRegressionCheck() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenReturn(project);
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, null, null, null, null, null, "   ");
+        when(issueRepository.search(eq(projectId), eq(criteria), any(Sort.class))).thenReturn(List.of());
+
+        issueService.search(callerId, "TRK", criteria);
+
+        verify(issueRepository).search(eq(projectId), eq(criteria), any(Sort.class));
+    }
+
+    @Test
+    void searchRequiresProjectMembership() {
+        when(projectAccess.requireMembership(callerId, "TRK")).thenThrow(new NotAProjectMemberException());
+        IssueSearchCriteria criteria = new IssueSearchCriteria(null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> issueService.search(callerId, "TRK", criteria))
+                .isInstanceOf(NotAProjectMemberException.class);
+        verify(issueRepository, never()).search(any(), any(), any());
     }
 
     @Test

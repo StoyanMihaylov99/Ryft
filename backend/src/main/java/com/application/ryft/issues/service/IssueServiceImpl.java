@@ -5,6 +5,7 @@ import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
+import com.application.ryft.issues.dto.IssueSearchCriteria;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssueKeySequence;
@@ -35,6 +36,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -167,6 +169,20 @@ public class IssueServiceImpl implements IssueService {
         return issueLabelingService.toResponses(issueRepository
                 .findAllByProjectIdAndSprintIdAndTypeNotOrderByCreatedAtAsc(project.id(), sprintId, IssueType.SUBTASK),
                 callerId, projectKey, role);
+    }
+
+    /**
+     * Not read-only for the same reason every other list method here isn't: transitively calls
+     * {@link IssueLabelingService#toResponses}, which may backfill {@code workflowStatusId} on a legacy
+     * row — see ARCHITECTURE.md's "readOnly + transitive lazy write" note.
+     */
+    @Override
+    @Transactional
+    public List<IssueResponse> search(UUID callerId, String projectKey, IssueSearchCriteria criteria) {
+        ProjectResponse project = projectAccess.requireMembership(callerId, projectKey);
+        ProjectRole role = projectAccess.getRole(callerId, projectKey);
+        List<Issue> issues = issueRepository.search(project.id(), criteria, Sort.by("createdAt").ascending());
+        return issueLabelingService.toResponses(issues, callerId, projectKey, role);
     }
 
     @Override

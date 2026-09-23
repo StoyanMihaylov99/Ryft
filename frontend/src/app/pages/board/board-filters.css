@@ -1,0 +1,361 @@
+/* Structured filter builder panel — split from board.css to stay under Angular's per-stylesheet
+ * size budget; see board.ts's `styleUrls`, mirroring board-workflow.css's split for the same reason. */
+
+.filters-panel h2 {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.filter-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.625rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The free-text search is the most direct way most users reach a result, so it's set apart from the
+ * chip facets below it rather than reading as one more equally-weighted `.chip-field` — a bottom
+ * divider here, plus a leading icon and slightly larger input below. */
+.filter-search-field {
+  padding-bottom: 0.875rem;
+  margin-bottom: 0.125rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.filter-search-input-wrap {
+  position: relative;
+}
+
+/* Reinforces the input's existing `type="search"` semantics rather than duplicating a browser-drawn
+ * icon (no browser renders a leading icon for `type="search"` by default). */
+.filter-search-icon {
+  position: absolute;
+  top: 50%;
+  left: 0.75rem;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* Same base input chrome as `.chip-add-form input[type='text']` (board.css) — duplicated rather than
+ * shared because this field sits directly in `.filter-groups`, not inside a `.chip-add-form`, and
+ * (unlike that form's inline siblings) is meant to span the full width of the panel. Padding-left and
+ * font-size are both a step up from the shared chrome: room for `.filter-search-icon`, and a size cue
+ * (alongside the divider above) that this is the panel's primary field. */
+.filter-text-input {
+  width: 100%;
+  padding: 0.5625rem 0.75rem 0.5625rem 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-family: inherit;
+}
+
+.filter-text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* `--text-tertiary` is the closest token already tuned to clear 4.5:1 against `--bg` in both themes
+ * (see styles.scss) — the browser's default placeholder color fell just short, at ~4.29:1. */
+.filter-text-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* Each of the six facet groups (Assignee/Status/Type/Sprint/Labels/Components) is a native
+ * `<details>`/`<summary>` disclosure rather than a custom button+ARIA-expando — free keyboard
+ * support and correct semantics (`aria-expanded` state, disclosure role) with no ARIA to get wrong.
+ * `list-style`/`::-webkit-details-marker` below replace the browser's default triangle marker with
+ * `.filter-facet-chevron`, which rotates on `[open]`, so this reads as one more affordance in the
+ * same stroke-icon language as `.filter-search-icon` above rather than default UA chrome. */
+.filter-facet-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding-block: 0.25rem;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.filter-facet-summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-facet-summary:hover {
+  color: var(--text);
+}
+
+.filter-facet-summary:hover .filter-facet-chevron {
+  color: var(--text-secondary);
+}
+
+.filter-facet-summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.filter-facet-chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+details[open] > .filter-facet-summary .filter-facet-chevron {
+  transform: rotate(90deg);
+}
+
+/* Lets a collapsed section still communicate its active selection count at a glance — the same
+ * "Filtered by: …" value `.filter-active-summary` already gives for the panel as a whole, just
+ * per-facet. Visually a digit-only pill; `.visually-hidden` sibling in the template spells it out
+ * ("2 selected") for screen readers, since `aria-hidden` here excludes it from `.filter-facet-summary`'s
+ * accessible name (same convention as `.saved-filter-badge`'s sibling text below). */
+.filter-facet-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 0.3125rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.filter-groups details > .chip-list {
+  margin-top: 0.5rem;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 200px;
+  min-width: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary);
+  background: var(--bg-elevated-2);
+  padding: 0.3125rem 0.625rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filter-chip:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.filter-chip.selected {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.filter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.saved-filters-section {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.saved-filters-section h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.saved-filter-row {
+  justify-content: space-between;
+}
+
+.saved-filter-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+/* Same uppercase-pill convention as `.filter-result-status` below — the "Shared" badge only needs
+ * to convey "not just yours", not draw the eye like the accent-filled `.filter-chip.selected`. */
+.saved-filter-badge {
+  flex-shrink: 0;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated-2);
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
+}
+
+/* Same bordered/transparent treatment as `.panel-close-btn` — an accent-colored equivalent would
+ * fail 4.5:1 text contrast against the page background in the dark theme at this font size. */
+.load-filter-btn {
+  padding: 0.3125rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.load-filter-btn:hover {
+  background: var(--bg-elevated-2);
+  color: var(--text);
+}
+
+.saved-filter-form {
+  flex-wrap: wrap;
+  margin-top: 0.625rem;
+}
+
+/* Unlike `.chip-add-form`'s other users (e.g. the Labels "Add label" form), this form has three
+ * flex siblings — the name input, the share checkbox label, and the submit button — competing for
+ * space. `.chip-add-form input[type='text']`'s `min-width: 0` (board.css) lets the input shrink to
+ * near-nothing on a narrow viewport instead of wrapping onto its own line; scoped here (rather than
+ * loosening the shared rule) so the Labels form's single-sibling layout is unaffected. */
+.saved-filter-form input[type='text'] {
+  min-width: 180px;
+}
+
+.saved-filter-share-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 24px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.saved-filter-share-label input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+}
+
+.filter-results-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Restates the active filter-builder selections next to the results — once the panel's filter form
+ * (potentially several populated chip groups tall) has scrolled out of view, this is the only
+ * remaining reminder of what's currently applied. */
+.filter-active-summary {
+  margin: 0 0 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-results-count {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-tertiary);
+}
+
+.filter-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The Filters panel's results can span every status/assignee at once, unlike a Kanban column
+ * (whose header already implies status) — so each result row carries its own status pill and
+ * assignee avatar, laid out as the first row inside the shared `.issue-card` button. */
+.filter-result-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.filter-result-status {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: var(--bg-elevated-2);
+  padding: 0.125rem 0.4375rem;
+  border-radius: 4px;
+}
+
+/* Same circular-initials convention as the sidebar's user avatar (see `sidebar.css`'s `.avatar`) —
+ * duplicated rather than shared because Angular's emulated encapsulation scopes component styles
+ * per-component, so a class defined in `sidebar.css` has no effect here. */
+.filter-result-assignee {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.filter-result-assignee.unassigned {
+  background: var(--bg-elevated-2);
+  color: var(--text-tertiary);
+}
+
+/* Only rendered while a free-text search is active (see `descriptionSnippetFor`) — lets a result
+ * matched on description alone show its connection to the search term, without the shared
+ * `app-issue-card` needing to know about this panel's search state. */
+.filter-result-snippet {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

@@ -2,7 +2,14 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { Burndown, CreateSprintRequest, Sprint, SprintBoard, UpdateSprintRequest } from './models';
+import {
+  Burndown,
+  CreateSprintRequest,
+  Sprint,
+  SprintBoard,
+  UpdateSprintRequest,
+  Velocity,
+} from './models';
 
 @Injectable({ providedIn: 'root' })
 export class SprintService {
@@ -37,5 +44,10 @@ export class SprintService {
 
   getBurndown(sprintId: string): Observable<Burndown> {
     return this.http.get<Burndown>(`${environment.apiBaseUrl}/sprints/${sprintId}/burndown`);
+  }
+
+  getVelocity(projectKey: string, limit?: number): Observable<Velocity> {
+    const url = `${environment.apiBaseUrl}/projects/${projectKey}/velocity`;
+    return this.http.get<Velocity>(limit != null ? `${url}?limit=${limit}` : url);
   }
 }

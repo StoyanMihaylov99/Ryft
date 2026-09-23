@@ -20,6 +20,17 @@
         <div class="banner" role="alert">{{ errorMessage() }}</div>
       }
 
+      <div class="card velocity-card">
+        <h2 class="section-heading">Velocity</h2>
+        @if (velocityLoading()) {
+          <p class="empty-state">Loading velocity chart…</p>
+        } @else if (velocityError()) {
+          <div class="banner" role="alert">{{ velocityError() }}</div>
+        } @else if (velocity(); as velocityValue) {
+          <app-velocity-chart [velocity]="velocityValue" />
+        }
+      </div>
+
       @if (showCreateForm() && canManageSprints()) {
         <div class="card create-card">
           <form [formGroup]="createForm" (ngSubmit)="submitCreate()">

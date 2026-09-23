@@ -357,6 +357,422 @@
         </div>
       }
 
+      @if (showFiltersPanel()) {
+        <div class="card filters-panel">
+          <div class="panel-heading">
+            <h2>Filters</h2>
+            <button type="button" class="panel-close-btn" (click)="toggleFiltersPanel()">
+              Close
+            </button>
+          </div>
+
+          @if (searchError()) {
+            <div class="banner" role="alert">{{ searchError() }}</div>
+          }
+
+          <form class="filter-builder-form" (submit)="$event.preventDefault(); runSearch()">
+            <div class="filter-groups">
+              <div class="chip-field filter-search-field">
+                <label class="chip-field-label" for="filters-text-input">Search</label>
+                <div class="filter-search-input-wrap">
+                  <svg
+                    class="filter-search-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    id="filters-text-input"
+                    type="search"
+                    class="filter-text-input"
+                    placeholder="Search title or description…"
+                    maxlength="200"
+                    [value]="filterText()"
+                    (input)="filterText.set($any($event.target).value)"
+                  />
+                </div>
+              </div>
+
+              <details
+                class="chip-field"
+                [open]="filterSectionExpanded().assignee"
+                (toggle)="onFilterSectionToggle('assignee', $any($event.target).open)"
+              >
+                <summary class="chip-field-label filter-facet-summary" id="filters-assignee-heading">
+                  <svg
+                    class="filter-facet-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                  Assignee@if (filterAssigneeIds().length; as count) {
+                    <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                    <span class="visually-hidden">, {{ count }} selected</span>
+                  }
+                </summary>
+                <div class="chip-list" role="group" aria-labelledby="filters-assignee-heading">
+                  @for (member of members(); track member.userId) {
+                    <button
+                      type="button"
+                      class="filter-chip"
+                      [class.selected]="isFilterValueSelected(filterAssigneeIds(), member.userId)"
+                      [attr.aria-pressed]="isFilterValueSelected(filterAssigneeIds(), member.userId)"
+                      (click)="toggleFilterAssignee(member.userId)"
+                    >
+                      {{ member.displayName }}
+                    </button>
+                  } @empty {
+                    <p class="chip-manage-empty">No members yet.</p>
+                  }
+                </div>
+              </details>
+
+              <details
+                class="chip-field"
+                [open]="filterSectionExpanded().status"
+                (toggle)="onFilterSectionToggle('status', $any($event.target).open)"
+              >
+                <summary class="chip-field-label filter-facet-summary" id="filters-status-heading">
+                  <svg
+                    class="filter-facet-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                  Status@if (filterStatusIds().length; as count) {
+                    <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                    <span class="visually-hidden">, {{ count }} selected</span>
+                  }
+                </summary>
+                <div class="chip-list" role="group" aria-labelledby="filters-status-heading">
+                  @if (workflowScheme()) {
+                    @for (status of sortedWorkflowStatuses(); track status.id) {
+                      <button
+                        type="button"
+                        class="filter-chip"
+                        [class.selected]="isFilterValueSelected(filterStatusIds(), status.id)"
+                        [attr.aria-pressed]="isFilterValueSelected(filterStatusIds(), status.id)"
+                        (click)="toggleFilterStatus(status.id)"
+                      >
+                        {{ status.name }}
+                      </button>
+                    }
+                  } @else {
+                    <p class="chip-manage-empty">Loading statuses…</p>
+                  }
+                </div>
+              </details>
+
+              <details
+                class="chip-field"
+                [open]="filterSectionExpanded().type"
+                (toggle)="onFilterSectionToggle('type', $any($event.target).open)"
+              >
+                <summary class="chip-field-label filter-facet-summary" id="filters-type-heading">
+                  <svg
+                    class="filter-facet-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                  Type@if (filterTypes().length; as count) {
+                    <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                    <span class="visually-hidden">, {{ count }} selected</span>
+                  }
+                </summary>
+                <div class="chip-list" role="group" aria-labelledby="filters-type-heading">
+                  @for (type of filterTypeOptions; track type) {
+                    <button
+                      type="button"
+                      class="filter-chip"
+                      [class.selected]="isFilterValueSelected(filterTypes(), type)"
+                      [attr.aria-pressed]="isFilterValueSelected(filterTypes(), type)"
+                      (click)="toggleFilterType(type)"
+                    >
+                      {{ type }}
+                    </button>
+                  }
+                </div>
+              </details>
+
+              <details
+                class="chip-field"
+                [open]="filterSectionExpanded().sprint"
+                (toggle)="onFilterSectionToggle('sprint', $any($event.target).open)"
+              >
+                <summary class="chip-field-label filter-facet-summary" id="filters-sprint-heading">
+                  <svg
+                    class="filter-facet-chevron"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.75"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="9 6 15 12 9 18" />
+                  </svg>
+                  Sprint@if (filterSprintIds().length; as count) {
+                    <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                    <span class="visually-hidden">, {{ count }} selected</span>
+                  }
+                </summary>
+                <div class="chip-list" role="group" aria-labelledby="filters-sprint-heading">
+                  @if (sprints(); as sprintList) {
+                    @for (sprint of sprintList; track sprint.id) {
+                      <button
+                        type="button"
+                        class="filter-chip"
+                        [class.selected]="isFilterValueSelected(filterSprintIds(), sprint.id)"
+                        [attr.aria-pressed]="isFilterValueSelected(filterSprintIds(), sprint.id)"
+                        (click)="toggleFilterSprint(sprint.id)"
+                      >
+                        {{ sprint.name }}
+                      </button>
+                    } @empty {
+                      <p class="chip-manage-empty">No sprints yet.</p>
+                    }
+                  } @else {
+                    <p class="chip-manage-empty">Loading sprints…</p>
+                  }
+                </div>
+              </details>
+
+              @if (labels().length) {
+                <details
+                  class="chip-field"
+                  [open]="filterSectionExpanded().labels"
+                  (toggle)="onFilterSectionToggle('labels', $any($event.target).open)"
+                >
+                  <summary class="chip-field-label filter-facet-summary" id="filters-labels-heading">
+                    <svg
+                      class="filter-facet-chevron"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="9 6 15 12 9 18" />
+                    </svg>
+                    Labels@if (filterLabelIds().length; as count) {
+                      <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                      <span class="visually-hidden">, {{ count }} selected</span>
+                    }
+                  </summary>
+                  <div class="chip-list" role="group" aria-labelledby="filters-labels-heading">
+                    @for (label of labels(); track label.id) {
+                      <app-label-chip
+                        [label]="label"
+                        [selectable]="true"
+                        [selected]="isFilterValueSelected(filterLabelIds(), label.id)"
+                        (toggled)="toggleFilterLabel(label.id)"
+                      />
+                    }
+                  </div>
+                </details>
+              }
+
+              @if (components().length) {
+                <details
+                  class="chip-field"
+                  [open]="filterSectionExpanded().components"
+                  (toggle)="onFilterSectionToggle('components', $any($event.target).open)"
+                >
+                  <summary
+                    class="chip-field-label filter-facet-summary"
+                    id="filters-components-heading"
+                  >
+                    <svg
+                      class="filter-facet-chevron"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.75"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <polyline points="9 6 15 12 9 18" />
+                    </svg>
+                    Components@if (filterComponentIds().length; as count) {
+                      <span class="filter-facet-count" aria-hidden="true">{{ count }}</span>
+                      <span class="visually-hidden">, {{ count }} selected</span>
+                    }
+                  </summary>
+                  <div class="chip-list" role="group" aria-labelledby="filters-components-heading">
+                    @for (component of components(); track component.id) {
+                      <app-component-chip
+                        [component]="component"
+                        [selectable]="true"
+                        [selected]="isFilterValueSelected(filterComponentIds(), component.id)"
+                        (toggled)="toggleFilterComponent(component.id)"
+                      />
+                    }
+                  </div>
+                </details>
+              }
+            </div>
+
+            <div class="filter-actions">
+              <button type="submit" class="submit" [disabled]="searching()">
+                {{ searching() ? 'Searching…' : 'Search issues' }}
+              </button>
+              <button type="button" class="panel-close-btn" (click)="clearFilters()">
+                Clear filters
+              </button>
+            </div>
+          </form>
+
+          <div class="saved-filters-section">
+            <h3>Saved filters</h3>
+
+            @if (savedFiltersError()) {
+              <div class="banner" role="alert">{{ savedFiltersError() }}</div>
+            }
+
+            @if (savedFiltersLoading()) {
+              <p class="empty-state">Loading saved filters…</p>
+            } @else {
+              <ul class="chip-manage-list">
+                @for (filter of savedFilters(); track filter.id) {
+                  <li class="chip-manage-row saved-filter-row">
+                    <span class="saved-filter-name">{{ filter.name }}</span>
+                    @if (filter.isShared) {
+                      <span class="saved-filter-badge" aria-hidden="true">Shared</span>
+                      <span class="visually-hidden">, shared with project</span>
+                    }
+                    <button
+                      type="button"
+                      class="load-filter-btn"
+                      [attr.aria-label]="'Load \'' + filter.name + '\''"
+                      (click)="loadSavedFilter(filter)"
+                    >
+                      Load
+                    </button>
+                    @if (filter.ownerId === currentUserId()) {
+                      <button
+                        type="button"
+                        class="remove-btn"
+                        [attr.aria-label]="'Remove \'' + filter.name + '\''"
+                        (click)="deleteSavedFilter(filter.id)"
+                      >
+                        Remove
+                      </button>
+                    }
+                  </li>
+                } @empty {
+                  <li class="chip-manage-empty">No saved filters yet.</li>
+                }
+              </ul>
+            }
+            <div class="visually-hidden" aria-live="polite">{{ savedFilterStatusMessage() }}</div>
+
+            <form
+              class="chip-add-form saved-filter-form"
+              (submit)="$event.preventDefault(); submitSaveFilter()"
+            >
+              <label class="visually-hidden" for="new-saved-filter-name">Saved filter name</label>
+              <input
+                id="new-saved-filter-name"
+                type="text"
+                placeholder="Save current filter as…"
+                [value]="newSavedFilterName()"
+                (input)="newSavedFilterName.set($any($event.target).value)"
+              />
+              @if (canShareFilter()) {
+                <label class="saved-filter-share-label">
+                  <input
+                    type="checkbox"
+                    [checked]="newSavedFilterShared()"
+                    (change)="newSavedFilterShared.set($any($event.target).checked)"
+                  />
+                  Share with project
+                </label>
+              }
+              <button
+                type="submit"
+                class="submit"
+                [disabled]="savingFilter() || !newSavedFilterName().trim()"
+              >
+                {{ savingFilter() ? 'Saving…' : 'Save filter' }}
+              </button>
+            </form>
+          </div>
+
+          <div class="filter-results-section" aria-live="polite">
+            @if (searching()) {
+              <p class="empty-state">Searching…</p>
+            } @else if (searchResults(); as results) {
+              @if (activeFiltersSummary(); as summary) {
+                <p class="filter-active-summary">{{ summary }}</p>
+              }
+              <p class="filter-results-count">
+                {{ results.length }} issue{{ results.length === 1 ? '' : 's' }} found
+              </p>
+              @if (results.length) {
+                <div class="filter-results-list">
+                  @for (issue of results; track issue.id) {
+                    <button type="button" class="issue-card" (click)="openIssue(issue.key)">
+                      <span class="filter-result-meta">
+                        <span class="filter-result-status">{{ issue.statusName }}</span>
+                        <span
+                          class="filter-result-assignee"
+                          [class.unassigned]="!assigneeInitialsFor(issue)"
+                        >
+                          <span class="visually-hidden">{{
+                            assigneeNameFor(issue)
+                              ? 'Assignee: ' + assigneeNameFor(issue)
+                              : 'Unassigned'
+                          }}</span>
+                          <span aria-hidden="true">{{ assigneeInitialsFor(issue) ?? '—' }}</span>
+                        </span>
+                      </span>
+                      <app-issue-card [issue]="issue" [epicTitle]="epicTitleFor(issue)" />
+                      @if (descriptionSnippetFor(issue); as snippet) {
+                        <p class="filter-result-snippet">{{ snippet }}</p>
+                      }
+                    </button>
+                  }
+                </div>
+              } @else {
+                <p class="empty-state">No issues match these filters.</p>
+              }
+            } @else {
+              <p class="empty-state">Choose filters and click Search issues to see matching issues.</p>
+            }
+          </div>
+        </div>
+      }
+
       @if (showCreateForm() && canManageIssues()) {
         <div class="card create-card">
           <form [formGroup]="createForm" (ngSubmit)="submitCreate()">

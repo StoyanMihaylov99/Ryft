@@ -161,6 +161,10 @@ class IssueActivityControllerIT extends AbstractIntegrationTest {
             assertThat(events).allMatch(e -> e.issueId().equals(issue.id()));
             assertThat(events.get(1).payload()).containsEntry("to_status", "Done");
             assertThat(events.get(2).payload()).containsEntry("excerpt", "Looks good");
+            // Every event was actored by the same registered user — actorDisplayName resolves to
+            // their real display name, not just their raw id (see ActivityEventResponse's javadoc).
+            assertThat(events).extracting(ActivityEventResponse::actorDisplayName)
+                    .containsOnly("Test User " + email);
         });
     }
 

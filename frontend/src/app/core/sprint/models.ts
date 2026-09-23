@@ -58,3 +58,18 @@ export interface Burndown {
   idealBurndown: BurndownPoint[];
   actualBurndown: BurndownPoint[];
 }
+
+export interface VelocitySprintPoint {
+  sprintId: string;
+  sprintName: string;
+  committedPoints: number;
+  completedPoints: number;
+  completedAt: string;
+}
+
+/** `sprints` is ordered chronologically oldest to newest — render left-to-right as-is. */
+export interface Velocity {
+  projectId: string;
+  projectKey: string;
+  sprints: VelocitySprintPoint[];
+}

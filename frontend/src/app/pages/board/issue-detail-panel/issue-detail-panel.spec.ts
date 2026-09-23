@@ -1015,6 +1015,7 @@ describe('IssueDetailPanel', () => {
         issueId: 'i1',
         eventType: 'issue.status_changed',
         actorId: 'u1',
+        actorDisplayName: 'Ada Actor',
         timestamp: '2024-01-01T00:00:00Z',
         payload: { from_status: 'To Do', to_status: 'Done' },
         ...overrides,

@@ -1,16 +1,24 @@
 package com.application.ryft.issues.repository;
 
+import com.application.ryft.issues.dto.IssueSearchCriteria;
 import com.application.ryft.issues.entity.Issue;
 import com.application.ryft.issues.entity.IssueType;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface IssueRepository extends JpaRepository<Issue, UUID> {
+/**
+ * {@link JpaSpecificationExecutor} backs {@code IssueServiceImpl#search} — the one dynamic,
+ * AND-combining query on this repository (see {@code IssueSpecifications}); every other method here
+ * stays a plain derived/JPQL query, matching the rest of this repository's style.
+ */
+public interface IssueRepository extends JpaRepository<Issue, UUID>, JpaSpecificationExecutor<Issue> {
 
     Optional<Issue> findByKey(String key);
 
@@ -78,4 +86,47 @@ public interface IssueRepository extends JpaRepository<Issue, UUID> {
             """)
     List<Issue> findAllByProjectIdAndComponentIdAndTypeNotOrderByCreatedAtAsc(@Param("projectId") UUID projectId,
             @Param("componentId") UUID componentId, @Param("excludedType") IssueType excludedType);
+
+    /**
+     * Backs {@code IssueServiceImpl#search} — the AND-combining structured filter (assignee/status/label/
+     * type/sprint/free-text) that {@code ProjectIssuesController}'s GET precedence chain deferred to this
+     * phase. Delegates the actual predicate-building to {@link IssueSpecifications}, kept package-private
+     * here rather than exposed on {@code IssueServiceImpl}, so the {@code Specification}/{@code CriteriaBuilder}
+     * plumbing stays fully inside this repository package.
+     *
+     * <p>{@code criteria.text()} can't be expressed as a {@code Specification} predicate directly — Postgres
+     * full-text matching needs {@code to_tsvector}/{@code plainto_tsquery}, not portable via JPQL/Criteria
+     * — so a blank/non-blank {@code text} resolves the matching issue ids via {@link #searchIssueIdsByText}
+     * first, and that pre-resolved list is folded in as one more {@code id IN (...)} predicate alongside
+     * {@code labelIds}/{@code componentIds}'s existing subquery predicates.
+     */
+    default List<Issue> search(UUID projectId, IssueSearchCriteria criteria, Sort sort) {
+        List<UUID> textMatchingIssueIds = criteria.text() != null && !criteria.text().isBlank()
+                ? searchIssueIdsByText(projectId, criteria.text())
+                : null;
+        return findAll(IssueSpecifications.matching(projectId, criteria, textMatchingIssueIds), sort);
+    }
+
+    /**
+     * Postgres full-text search against {@code title}/{@code description}, scoped to one project — a
+     * native query since {@code to_tsvector}/{@code plainto_tsquery} aren't expressible via portable
+     * JPQL/Criteria. {@code plainto_tsquery} (not {@code to_tsquery}) so arbitrary user input — including
+     * tsquery operator characters like {@code &}/{@code |}/{@code !} — is parsed as a plain phrase instead
+     * of tsquery syntax the caller would otherwise need to know and escape, avoiding a Postgres syntax
+     * error on that input. {@code :text} is a bind parameter, never concatenated, so this is safe from SQL
+     * injection the same way every other parameterized query in this project is.
+     *
+     * <p>The {@code tsvector} is computed at query time rather than stored in a generated column: this
+     * project has no Flyway/Liquibase (see {@code Issue.status}'s javadoc), and {@code ddl-auto: update}
+     * can't express a Postgres {@code GENERATED ALWAYS AS (...) STORED} column or a GIN index from plain
+     * entity annotations. Acceptable at this project's portfolio scale — no index means a full scan of one
+     * project's issues per search, not a concern until issue counts are far larger than this app targets.
+     */
+    @Query(value = """
+            select id from issues
+            where project_id = :projectId
+            and to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, ''))
+                @@ plainto_tsquery('english', :text)
+            """, nativeQuery = true)
+    List<UUID> searchIssueIdsByText(@Param("projectId") UUID projectId, @Param("text") String text);
 }

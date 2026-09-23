@@ -4,10 +4,14 @@ import com.application.ryft.activity.dto.ActivityEventResponse;
 import com.application.ryft.activity.dto.BoardUpdateMessage;
 import com.application.ryft.activity.entity.ActivityEvent;
 import com.application.ryft.activity.repository.ActivityEventRepository;
+import com.application.ryft.identity.user.dto.UserResponse;
+import com.application.ryft.identity.user.service.UserService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +24,13 @@ public class ActivityServiceImpl implements ActivityService {
 
     private final ActivityEventRepository activityEventRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserService userService;
 
     public ActivityServiceImpl(ActivityEventRepository activityEventRepository,
-            SimpMessagingTemplate messagingTemplate) {
+            SimpMessagingTemplate messagingTemplate, UserService userService) {
         this.activityEventRepository = activityEventRepository;
         this.messagingTemplate = messagingTemplate;
+        this.userService = userService;
     }
 
     @Override
@@ -89,9 +95,25 @@ public class ActivityServiceImpl implements ActivityService {
     @Override
     @Transactional(readOnly = true)
     public List<ActivityEventResponse> listForIssue(UUID projectId, UUID issueId) {
-        return activityEventRepository.findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId).stream()
-                .map(ActivityEventResponse::from)
+        List<ActivityEvent> events = activityEventRepository
+                .findAllByProjectIdAndIssueIdOrderByTimestampAsc(projectId, issueId);
+        Map<UUID, UserResponse> actorsById = fetchActors(events);
+        return events.stream()
+                .map(event -> ActivityEventResponse.from(event, displayNameOf(actorsById, event.actorId())))
                 .toList();
+    }
+
+    /** One query for every distinct actor in the list, instead of one per event — same batching as
+     *  {@code CommentServiceImpl.fetchAuthors}. */
+    private Map<UUID, UserResponse> fetchActors(List<ActivityEvent> events) {
+        Set<UUID> actorIds = events.stream().map(ActivityEvent::actorId).collect(Collectors.toSet());
+        return userService.findAllByIds(actorIds);
+    }
+
+    /** null when the actor id no longer resolves to a user; the event still renders without attribution. */
+    private String displayNameOf(Map<UUID, UserResponse> actorsById, UUID actorId) {
+        UserResponse actor = actorsById.get(actorId);
+        return actor != null ? actor.displayName() : null;
     }
 
     private void record(UUID projectId, String projectKey, UUID issueId, String eventType, UUID actorId,

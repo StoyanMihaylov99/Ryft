@@ -1,0 +1,86 @@
+@if (isEmpty()) {
+  <p class="empty-state">No completed sprints yet — velocity will appear here once a sprint completes.</p>
+} @else {
+  <svg
+    [attr.viewBox]="'0 0 ' + viewBoxWidth + ' ' + viewBoxHeight"
+    class="velocity-svg"
+    role="img"
+    [attr.aria-label]="
+      'Velocity chart: committed vs completed points for the last ' +
+      barGroups().length +
+      ' sprints'
+    "
+  >
+    <line
+      class="axis-line"
+      [attr.x1]="margin.left"
+      [attr.y1]="margin.top"
+      [attr.x2]="margin.left"
+      [attr.y2]="plotBottom"
+    />
+    <line
+      class="axis-line"
+      [attr.x1]="margin.left"
+      [attr.y1]="plotBottom"
+      [attr.x2]="viewBoxWidth - margin.right"
+      [attr.y2]="plotBottom"
+    />
+
+    @for (tick of yTicks(); track tick.value) {
+      <text class="axis-label" [attr.x]="margin.left - 8" [attr.y]="tick.y + 3" text-anchor="end">{{
+        tick.value
+      }}</text>
+    }
+
+    @for (group of barGroups(); track group.sprintId) {
+      <path class="committed-bar" [attr.d]="group.committed.path" />
+      <text
+        class="value-label"
+        [attr.x]="group.committed.labelX"
+        [attr.y]="group.committed.labelY"
+        text-anchor="middle"
+        >{{ group.committed.value }}</text
+      >
+      <path class="completed-bar" [attr.d]="group.completed.path" />
+      <text
+        class="value-label"
+        [attr.x]="group.completed.labelX"
+        [attr.y]="group.completed.labelY"
+        text-anchor="middle"
+        >{{ group.completed.value }}</text
+      >
+      <text class="axis-label sprint-label" [attr.x]="group.labelX" [attr.y]="plotBottom + 16" text-anchor="middle"
+        >{{ group.label }}<title>{{ group.sprintName }}</title></text
+      >
+    }
+  </svg>
+
+  <div class="legend">
+    <span class="legend-item"><span class="legend-swatch committed-swatch"></span>Committed</span>
+    <span class="legend-item"><span class="legend-swatch completed-swatch"></span>Completed</span>
+  </div>
+
+  <div class="table-scroll">
+    <table class="visually-hidden">
+      <caption>Velocity per sprint: committed vs completed points</caption>
+      <thead>
+        <tr>
+          <th scope="col">Sprint</th>
+          <th scope="col">Committed points</th>
+          <th scope="col">Completed points</th>
+          <th scope="col">Completed on</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (group of barGroups(); track group.sprintId) {
+          <tr>
+            <th scope="row">{{ group.sprintName }}</th>
+            <td>{{ group.committed.value }}</td>
+            <td>{{ group.completed.value }}</td>
+            <td>{{ group.completedAt | date }}</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}

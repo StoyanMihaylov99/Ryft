@@ -5,6 +5,7 @@ import com.application.ryft.issues.dto.CreateIssueRequest;
 import com.application.ryft.issues.dto.CreateSubtaskRequest;
 import com.application.ryft.issues.dto.EpicProgressResponse;
 import com.application.ryft.issues.dto.IssueResponse;
+import com.application.ryft.issues.dto.IssueSearchCriteria;
 import com.application.ryft.issues.dto.UpdateIssueRequest;
 import java.util.List;
 import java.util.UUID;
@@ -43,6 +44,18 @@ public interface IssueService {
 
     /** All issues in a given sprint, regardless of status. */
     List<IssueResponse> listForSprint(UUID callerId, String projectKey, UUID sprintId);
+
+    /**
+     * The AND-capable replacement for status/assignee/type filtering that {@code ProjectIssuesController}'s
+     * GET {@code sprintId}/{@code epicId}/{@code labelId}/{@code componentId} params deferred to this
+     * phase: that endpoint's filters are mutually exclusive by precedence specifically because
+     * AND-combining them would need a dynamic query (see its javadoc). This method builds exactly that
+     * dynamic query (a {@code Specification}, see {@code IssueSpecifications}) instead, ANDing together
+     * every non-empty field of {@code criteria} (values within one field are OR'd — see
+     * {@link IssueSearchCriteria}). SUBTASK issues are always excluded, same as every other list method
+     * here. Any project member, including Viewer, may call it — same as every other list method.
+     */
+    List<IssueResponse> search(UUID callerId, String projectKey, IssueSearchCriteria criteria);
 
     IssueResponse get(UUID callerId, String issueKey);
 
