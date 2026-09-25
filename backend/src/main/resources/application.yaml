@@ -29,6 +29,34 @@ spring:
             client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:unconfigured-github-client-secret}
             scope: read:user,user:email
 
+management:
+  # Separate port: Prometheus (and container liveness/readiness probes) reach actuator here without
+  # ever touching the public API port — see SecurityConfig's javadoc for the full rationale and the
+  # locally-verified behavior of this combined with the one shared SecurityFilterChain bean.
+  server:
+    port: ${MANAGEMENT_PORT:8081}
+  endpoints:
+    web:
+      exposure:
+        # Everything else stays unexposed (default is just "health") — no /actuator/env,
+        # /actuator/beans, /actuator/heapdump, etc. reachable even on the management port.
+        include: health, prometheus, info
+  endpoint:
+    health:
+      # Liveness/readiness groups are enabled by default in Boot 4; spelled out explicitly since this
+      # is exactly what the container orchestrator's probes will target once deployed.
+      probes:
+        enabled: true
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      # p99 needs an explicit SLO bucket boundary at/near it, or Prometheus's histogram_quantile
+      # only interpolates between whatever buckets exist — these track this app's expected latency
+      # budget (fast CRUD/reads, no long-running requests) rather than default Micrometer buckets.
+      slo:
+        http.server.requests: 50ms, 100ms, 200ms, 500ms, 1s, 2s
+
 app:
   jwt:
     access-token-ttl: PT15M
@@ -43,3 +71,6 @@ app:
     failure-redirect-uri: ${OAUTH2_FAILURE_REDIRECT_URI:http://localhost:4200/login}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+  seed:
+    enabled: ${SEED_DEMO_DATA:false}
+    demo-password: ${SEED_DEMO_PASSWORD:RyftDemo!2026}

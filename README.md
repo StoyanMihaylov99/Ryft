@@ -328,6 +328,55 @@ cd backend
 (Omit `DB_PORT` — or set it back to 5432 in both `docker-compose.yml` and
 here — once nothing else on your machine holds port 5432.)
 
+### Demo data
+
+A fresh database is empty. To populate it with a realistic multi-project
+demo (one workspace, five users, three projects with epics/stories/bugs/
+subtasks, sprint history, comments, labels, saved filters — see
+`com.application.ryft.seed.data.DemoDataSet`), set `SEED_DEMO_DATA=true`
+before starting the backend:
+
+```bash
+SEED_DEMO_DATA=true ./mvnw spring-boot:run
+```
+
+Log in with the demo account: **`demo@ryft.dev`**, password
+`RyftDemo!2026` (override with `SEED_DEMO_PASSWORD` — this is the account
+a deployed demo instance's guest login points at). Seeding is off by
+default and, once enabled, idempotent: the whole install runs as one
+atomic transaction, so it either fully succeeds or leaves nothing behind,
+and checking whether `demo@ryft.dev` is already registered (skipping with
+a log line if so) is therefore an exact "already fully seeded" signal, not
+an approximate one — safe to leave `SEED_DEMO_DATA=true` set across
+restarts rather than a one-shot flag you have to remember to unset.
+
+**Never enable `SEED_DEMO_DATA` against a real/production database** — it
+registers a well-known account with a well-known (or default) password.
+This is strictly a local/demo/staging convenience.
+
+### Observability
+
+`docker-compose up -d` also brings up Prometheus and Grafana, provisioned to
+scrape/display this backend automatically:
+
+- **Prometheus** — http://localhost:9090 (Status → Targets should show
+  `ryft-backend` as `UP`). Scrapes `host.docker.internal:8081` — the
+  backend's separate **management port**, not the public API port on 8080
+  — since the backend runs on the host (`mvn spring-boot:run`), not as a
+  compose service. See ARCHITECTURE.md's Observability section for why
+  metrics live on a separate port at all.
+- **Grafana** — http://localhost:3001, login `admin` / `admin` (change
+  this before deploying anywhere reachable). The Prometheus datasource and
+  the "Ryft - Backend Overview" dashboard (request rate, error rate,
+  p50/p95/p99 latency, per-endpoint latency, JVM heap/GC, HikariCP,
+  process CPU, uptime) are both provisioned from
+  `observability/grafana/provisioning/` — nothing to click through
+  manually, it's there the first time Grafana starts.
+- **Actuator directly**: http://localhost:8081/actuator/health (public,
+  no JWT — this is also what a container orchestrator's liveness/readiness
+  probes would target) and http://localhost:8081/actuator/prometheus (the
+  scrape endpoint itself). Port 8080 exposes neither.
+
 Run the frontend:
 
 ```bash

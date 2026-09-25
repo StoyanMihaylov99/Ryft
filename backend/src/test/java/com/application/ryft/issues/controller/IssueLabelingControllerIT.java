@@ -181,6 +181,35 @@ class IssueLabelingControllerIT extends AbstractIntegrationTest {
         assertThat(result.labels()).extracting(LabelResponse::id).containsExactly(label.id());
     }
 
+    /**
+     * Regression: the frontend resends the full label/component list on every save, so an update that
+     * keeps an already-attached label must not collide with its own old join row on the
+     * (issue_id, label_id) unique constraint.
+     */
+    @Test
+    void updatingAnIssueKeepingAnExistingLabelAndComponentReplacesThemWithoutConflict() throws Exception {
+        String email = uniqueEmail();
+        String token = registerAndGetToken(email);
+        String key = uniqueKey();
+        createProject(key, userOf(email));
+        LabelResponse kept = createLabel(key, token, "Bug");
+        LabelResponse added = createLabel(key, token, "UX");
+        ComponentResponse component = createComponent(key, token, "API");
+        IssueResponse issue = createIssue(key, token, List.of(kept.id()), List.of(component.id()));
+
+        MvcResult updated = mockMvc.perform(patch("/api/v1/issues/{issueKey}", issue.key())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new UpdateIssueRequest(null, null, null, null,
+                                null, null, List.of(kept.id(), added.id()), List.of(component.id())))))
+                .andExpect(status().isOk())
+                .andReturn();
+        IssueResponse result = objectMapper.readValue(updated.getResponse().getContentAsString(), IssueResponse.class);
+
+        assertThat(result.labels()).extracting(LabelResponse::id).containsExactlyInAnyOrder(kept.id(), added.id());
+        assertThat(result.components()).extracting(ComponentResponse::id).containsExactly(component.id());
+    }
+
     @Test
     void updatingAnIssueWithEmptyLabelIdsClearsExistingLabels() throws Exception {
         String email = uniqueEmail();
