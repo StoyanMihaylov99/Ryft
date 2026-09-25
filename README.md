@@ -8,7 +8,11 @@ A self-hosted, Jira-style project management and issue tracking tool:
 projects, epics, issues, sprints, Kanban/Scrum boards, configurable
 workflows, and role-based permissions.
 
-<img width="1897" height="915" alt="Screenshot 2026-09-21 at 11 45 20" src="https://github.com/user-attachments/assets/650969ca-bd26-47ae-8a3f-bb8e31ba1005" />
+<img width="1494" height="821" alt="Screenshot 2026-09-25 at 12 42 42" src="https://github.com/user-attachments/assets/6b52ef25-cbf6-4397-a88d-3d6bb1de1a18" />
+
+<img width="1505" height="811" alt="image" src="https://github.com/user-attachments/assets/a11e476c-b2e0-4570-9fce-be6450dd2b07" />
+
+
 
 
 The domain (hierarchical
