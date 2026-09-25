@@ -17,6 +17,39 @@ services:
     volumes:
       - mongo-data:/data/db
 
+  prometheus:
+    image: prom/prometheus:v3.13.3
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    # The backend isn't a compose service (see CLAUDE.md: it runs on the host via
+    # `mvn spring-boot:run`), so Prometheus reaches it through Docker's host-gateway alias, not a
+    # service name. Docker Desktop (macOS/Windows) resolves host.docker.internal out of the box;
+    # this extra_hosts entry is what makes the identical scrape config also work on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:13.2.2
+    ports:
+      - "3001:3000"
+    environment:
+      # Default admin/admin (Grafana forces a password change prompt on first login unless
+      # disabled) — fine for local/demo use; a real deployment would inject GF_SECURITY_ADMIN_PASSWORD
+      # instead of relying on this default.
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
   mongo-data:
+  prometheus-data:
+  grafana-data:

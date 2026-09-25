@@ -32,6 +32,7 @@ import com.application.ryft.sprints.dto.SprintResponse;
 import com.application.ryft.workflow.dto.WorkflowSchemeResponse;
 import com.application.ryft.workflow.entity.StatusCategory;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -43,7 +44,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import tools.jackson.databind.ObjectMapper;
 
-/** Shares one Postgres container across the whole test JVM, same as the other *IT classes. */
+/**
+ * Shares one Postgres container across the whole test JVM, same as the other *IT classes. Every "today"
+ * computed here uses {@code LocalDate.now(ZoneOffset.UTC)}, matching {@code BurndownServiceImpl}'s own
+ * clock (see ARCHITECTURE.md's "readOnly + transitive lazy write" note's sibling rule on matching
+ * clocks) — a bare {@code LocalDate.now()} would use the host's default zone, which drifts a calendar
+ * day ahead of the service's UTC "today" for part of every day on a positive-UTC-offset host, making
+ * {@code actualBurndown} appear to have no point for "today" at all when a test happens to run in that
+ * window.
+ */
 @AutoConfigureMockMvc
 class BurndownControllerIT extends AbstractIntegrationTest {
 
@@ -173,7 +182,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         String key = uniqueKey();
         createProject(key, userOf(email));
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         SprintResponse sprint = createSprint(key, token, new CreateSprintRequest("Sprint 1", "Goal",
                 today.minusDays(2), today.plusDays(5)));
 
@@ -223,7 +232,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         String key = uniqueKey();
         User owner = userOf(email);
         Project project = createProject(key, owner);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         SprintResponse sprint = createSprint(key, token, new CreateSprintRequest("Sprint 1", null,
                 today.minusDays(1), today.plusDays(5)));
         startSprint(sprint.id(), token);
@@ -257,7 +266,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         String ownerToken = registerAndGetToken(ownerEmail);
         String key = uniqueKey();
         createProject(key, userOf(ownerEmail));
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         SprintResponse sprint = createSprint(key, ownerToken, new CreateSprintRequest("Sprint 1", null,
                 today.minusDays(1), today.plusDays(5)));
         startSprint(sprint.id(), ownerToken);
@@ -275,7 +284,7 @@ class BurndownControllerIT extends AbstractIntegrationTest {
         String token = registerAndGetToken(email);
         String key = uniqueKey();
         createProject(key, userOf(email));
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
         SprintResponse sprint = createSprint(key, token, new CreateSprintRequest("Sprint 1", null,
                 today.minusDays(1), today.plusDays(5)));
 
